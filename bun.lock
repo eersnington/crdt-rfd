@@ -50,15 +50,6 @@
         "vitest": "catalog:",
       },
     },
-    "apps/website": {
-      "name": "website",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@typescript/native-preview": "catalog:",
-        "typescript": "~6.0.2",
-        "vite-plus": "catalog:",
-      },
-    },
     "packages/utils": {
       "name": "utils",
       "version": "0.0.0",
@@ -1255,8 +1246,6 @@
     "webidl-conversions": ["webidl-conversions@8.0.1", "", {}, "sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ=="],
 
     "webpack-virtual-modules": ["webpack-virtual-modules@0.6.2", "", {}, "sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ=="],
-
-    "website": ["website@workspace:apps/website"],
 
     "whatwg-mimetype": ["whatwg-mimetype@5.0.0", "", {}, "sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw=="],
 
