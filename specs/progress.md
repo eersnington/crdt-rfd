@@ -9,23 +9,23 @@
 
 ## Overall status
 
-| Area | Status | Notes |
-| --- | --- | --- |
-| Product specification | complete | Initial implementation specification captured in `specs/` |
-| Alchemy foundation | not-started | First deploy must contain only the required R2 bucket |
-| Domain model | not-started | Schemas and tagged errors are not implemented |
-| Authentication and ownership | not-started | GitHub OAuth and D1 authorization pending |
-| Artifacts repository | not-started | Binding, bootstrap, and Git operations pending |
-| Public reader | not-started | Index and reader pending |
-| Editor and Markdown | not-started | Tiptap round-trip spike required first |
-| CRDT collaboration | not-started | Yjs Durable Object pending |
-| Checkpointing | not-started | Depends on editor and Artifacts integration |
-| Comments | not-started | Depends on CRDT anchors and D1 |
-| Proposals and diffs | not-started | Depends on checkpointing and branch operations |
-| Supermemory | not-started | Provider layers and indexing pending |
-| Workers AI | not-started | Funding policy and provider layers pending |
-| External Git conflicts | not-started | Depends on checkpointing and push events |
-| Release and CI | not-started | Preview stages and end-to-end tests pending |
+| Area                         | Status      | Notes                                                                |
+| ---------------------------- | ----------- | -------------------------------------------------------------------- |
+| Product specification        | complete    | Initial implementation specification captured in `specs/`            |
+| Alchemy foundation           | in-progress | One-bucket stack plans successfully; deployment confirmation pending |
+| Domain model                 | not-started | Schemas and tagged errors are not implemented                        |
+| Authentication and ownership | not-started | GitHub OAuth and D1 authorization pending                            |
+| Artifacts repository         | not-started | Binding, bootstrap, and Git operations pending                       |
+| Public reader                | not-started | Index and reader pending                                             |
+| Editor and Markdown          | not-started | Tiptap round-trip spike required first                               |
+| CRDT collaboration           | not-started | Yjs Durable Object pending                                           |
+| Checkpointing                | not-started | Depends on editor and Artifacts integration                          |
+| Comments                     | not-started | Depends on CRDT anchors and D1                                       |
+| Proposals and diffs          | not-started | Depends on checkpointing and branch operations                       |
+| Supermemory                  | not-started | Provider layers and indexing pending                                 |
+| Workers AI                   | not-started | Funding policy and provider layers pending                           |
+| External Git conflicts       | not-started | Depends on checkpointing and push events                             |
+| Release and CI               | not-started | Preview stages and end-to-end tests pending                          |
 
 ## Workstream trackers
 
@@ -40,24 +40,24 @@
 
 ## Stacked PRs
 
-| PR | Deliverable | Dependencies | Status |
-| --- | --- | --- | --- |
-| 01 | `packages/infra`, Alchemy v2, one R2 bucket, confirmed deployment | none | not-started |
-| 02 | Domain schemas, errors, frontmatter parser, Markdown fixtures | 01 | not-started |
-| 03 | D1 migrations, GitHub OAuth, ownership and authorization | 02 | not-started |
-| 04 | Artifacts binding, repository bootstrap, read and write operations | 02 | not-started |
-| 05 | Public RFD index and reader backed by Artifacts | 04 | not-started |
-| 06 | Tiptap Markdown round-trip spike and supported syntax policy | 02 | not-started |
-| 07 | Single-user WYSIWYG editor and metadata controls | 05, 06 | not-started |
-| 08 | Yjs Durable Object, WebSocket transport, server bootstrap | 03, 07 | not-started |
-| 09 | CRDT persistence, compaction, reconnect, presence, cursors | 08 | not-started |
-| 10 | Validated checkpoints from Yjs to Artifacts | 04, 09 | not-started |
-| 11 | D1 comments with Yjs and diff anchors | 03, 09 | not-started |
-| 12 | Proposal branches, diffs, manual revisions, merge, abandon | 10 | not-started |
-| 13 | Memory Effect service, hosted/self-hosted Supermemory, indexing | 10 | not-started |
-| 14 | ProposalModel layers, funding policy, AI proposal generation | 12, 13 | not-started |
-| 15 | Artifacts push events and conflict resolution | 10, 13 | not-started |
-| 16 | Preview stages, CI, observability, security and E2E gates | 11, 14, 15 | not-started |
+| PR  | Deliverable                                                        | Dependencies | Status      |
+| --- | ------------------------------------------------------------------ | ------------ | ----------- |
+| 01  | `packages/infra`, Alchemy v2, one R2 bucket, confirmed deployment  | none         | in-progress |
+| 02  | Domain schemas, errors, frontmatter parser, Markdown fixtures      | 01           | not-started |
+| 03  | D1 migrations, GitHub OAuth, ownership and authorization           | 02           | not-started |
+| 04  | Artifacts binding, repository bootstrap, read and write operations | 02           | not-started |
+| 05  | Public RFD index and reader backed by Artifacts                    | 04           | not-started |
+| 06  | Tiptap Markdown round-trip spike and supported syntax policy       | 02           | not-started |
+| 07  | Single-user WYSIWYG editor and metadata controls                   | 05, 06       | not-started |
+| 08  | Yjs Durable Object, WebSocket transport, server bootstrap          | 03, 07       | not-started |
+| 09  | CRDT persistence, compaction, reconnect, presence, cursors         | 08           | not-started |
+| 10  | Validated checkpoints from Yjs to Artifacts                        | 04, 09       | not-started |
+| 11  | D1 comments with Yjs and diff anchors                              | 03, 09       | not-started |
+| 12  | Proposal branches, diffs, manual revisions, merge, abandon         | 10           | not-started |
+| 13  | Memory Effect service, hosted/self-hosted Supermemory, indexing    | 10           | not-started |
+| 14  | ProposalModel layers, funding policy, AI proposal generation       | 12, 13       | not-started |
+| 15  | Artifacts push events and conflict resolution                      | 10, 13       | not-started |
+| 16  | Preview stages, CI, observability, security and E2E gates          | 11, 14, 15   | not-started |
 
 ## Parallel work lanes
 
@@ -93,5 +93,5 @@ After PR 12:
 Record each confirmed infrastructure operation here.
 
 | Date | Stage | Command | Result | Resources |
-| --- | --- | --- | --- | --- |
-| | | | | |
+| ---- | ----- | ------- | ------ | --------- |
+|      |       |         |        |           |

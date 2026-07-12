@@ -13,12 +13,17 @@
     "test": "vp run -r test",
     "build": "vp run -r build",
     "dev": "vp run website#dev",
+    "infra:deploy": "vp run @crdt-rfd/infra#deploy",
+    "infra:destroy": "vp run @crdt-rfd/infra#destroy",
+    "infra:plan": "vp run @crdt-rfd/infra#plan",
     "prepare": "vp config"
   },
   "dependencies": {
     "@typescript/native-preview": "catalog:"
   },
   "devDependencies": {
+    "@effect/language-service": "0.86.5",
+    "@effect/tsgo": "0.16.0",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -38,6 +43,7 @@
   "catalog": {
     "typescript": "^6.0.2",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "effect": "4.0.0-beta.94",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
     "vite-plus": "0.2.4",
     "vitest": "4.1.10"
