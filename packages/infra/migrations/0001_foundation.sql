@@ -1,51 +1,61 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE users (
+CREATE TABLE user (
   id TEXT PRIMARY KEY NOT NULL,
-  display_name TEXT NOT NULL CHECK (length(trim(display_name)) > 0),
-  avatar_url TEXT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  email_verified INTEGER NOT NULL CHECK (email_verified IN (0, 1)),
+  image TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
 ) STRICT;
 
-CREATE TABLE oauth_accounts (
-  provider TEXT NOT NULL CHECK (provider = 'github'),
-  provider_account_id TEXT NOT NULL,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider_login TEXT NOT NULL CHECK (length(trim(provider_login)) > 0),
+CREATE TABLE session (
+  id TEXT PRIMARY KEY NOT NULL,
+  expires_at INTEGER NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  ip_address TEXT,
+  user_agent TEXT,
+  user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+) STRICT;
+
+CREATE INDEX session_user_id_idx ON session(user_id);
+
+CREATE TABLE account (
+  id TEXT PRIMARY KEY NOT NULL,
+  account_id TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  access_token TEXT,
+  refresh_token TEXT,
+  id_token TEXT,
+  access_token_expires_at INTEGER,
+  refresh_token_expires_at INTEGER,
+  scope TEXT,
+  password TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
-  PRIMARY KEY (provider, provider_account_id),
-  UNIQUE (provider, user_id)
+  UNIQUE (provider_id, account_id)
 ) STRICT;
 
-CREATE TABLE sessions (
+CREATE INDEX account_user_id_idx ON account(user_id);
+
+CREATE TABLE verification (
   id TEXT PRIMARY KEY NOT NULL,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  token_hash TEXT NOT NULL UNIQUE CHECK (length(token_hash) = 64),
+  identifier TEXT NOT NULL,
+  value TEXT NOT NULL,
   expires_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  rotated_at INTEGER,
-  CHECK (expires_at > created_at),
-  CHECK (rotated_at IS NULL OR rotated_at >= created_at)
+  updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
 ) STRICT;
 
-CREATE INDEX sessions_user_id ON sessions(user_id);
-CREATE INDEX sessions_expires_at ON sessions(expires_at);
-
-CREATE TABLE oauth_transactions (
-  id_hash TEXT PRIMARY KEY NOT NULL CHECK (length(id_hash) = 64),
-  state TEXT NOT NULL UNIQUE,
-  verifier TEXT NOT NULL,
-  expires_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL CHECK (expires_at > created_at)
-) STRICT;
-
-CREATE INDEX oauth_transactions_expires_at ON oauth_transactions(expires_at);
+CREATE INDEX verification_identifier_idx ON verification(identifier);
 
 CREATE TABLE workspace_settings (
   workspace_id TEXT PRIMARY KEY NOT NULL,
-  owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  owner_user_id TEXT NOT NULL REFERENCES user(id) ON DELETE RESTRICT,
   reviewer_can_merge INTEGER NOT NULL DEFAULT 0 CHECK (reviewer_can_merge IN (0, 1)),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
@@ -54,7 +64,7 @@ CREATE TABLE workspace_settings (
 CREATE TABLE rfd_memberships (
   workspace_id TEXT NOT NULL REFERENCES workspace_settings(workspace_id) ON DELETE CASCADE,
   rfd_id TEXT NOT NULL,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('author', 'coauthor', 'reviewer')),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),

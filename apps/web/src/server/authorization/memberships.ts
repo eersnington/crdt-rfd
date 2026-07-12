@@ -1,6 +1,10 @@
 import type { RfdRole, WorkspacePolicy } from "@crdt-rfd/domain";
-import { Context, Effect, Layer, Ref } from "effect";
-import { MembershipStoreError } from "../auth/errors.ts";
+import { Context, Data, Effect, Layer, Ref } from "effect";
+
+export class MembershipStoreError extends Data.TaggedError("MembershipStoreError")<{
+  readonly operation: "load";
+  readonly message: string;
+}> {}
 
 export interface AuthorizationMemberships {
   readonly workspaceOwner: boolean;
