@@ -44,6 +44,8 @@
     "typescript": "^6.0.2",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "effect": "4.0.0-beta.94",
+    "drizzle-kit": "0.31.10",
+    "drizzle-orm": "0.45.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
     "vite-plus": "0.2.4",
     "vitest": "4.1.10"

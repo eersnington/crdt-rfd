@@ -20,6 +20,7 @@ export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
     GITHUB_CLIENT_ID: Config.string("GITHUB_CLIENT_ID"),
     GITHUB_CLIENT_SECRET: Config.redacted("GITHUB_CLIENT_SECRET"),
     APP_ORIGIN: Config.string("APP_ORIGIN"),
+    BETTER_AUTH_SECRET: Config.redacted("BETTER_AUTH_SECRET"),
   },
 }) {}
 
