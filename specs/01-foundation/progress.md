@@ -16,12 +16,12 @@
 - [ ] Record the deployment.
 - [ ] Add shared domain schemas and tagged errors.
 - [ ] Add frontmatter parser and serializer.
-- [ ] Add D1 through Alchemy after the initial deploy gate.
-- [ ] Add base migrations.
-- [ ] Add GitHub OAuth and sessions.
-- [ ] Add authorization evaluator and membership service.
-- [ ] Add domain, migration, auth, and authorization tests.
-- [ ] Run `vp check`, `vp test`, and affected builds.
+- [x] Add D1 through Alchemy after the initial deploy gate.
+- [x] Add base migrations.
+- [x] Add GitHub OAuth and sessions.
+- [x] Add authorization evaluator and membership service.
+- [x] Add domain, migration, auth, and authorization tests.
+- [x] Run `vp check`, `vp test`, and affected builds.
 
 ## Blockers
 
@@ -32,6 +32,7 @@ Initial R2 deployment awaits explicit user confirmation.
 Add dated notes here when a schema, provider, or deployment decision changes.
 
 - 2026-07-12: Pinned the current Alchemy v2 getting-started dependencies and added an isolated Effect-style stack containing only the onboarding R2 bucket. No deployment has occurred.
+- 2026-07-13: Added the deferred Website D1 binding, base identity/session/authorization migration, Effect service boundaries, pure in-memory implementations, D1 adapters, and local migration/auth tests. No deployment has occurred.
 
 ## Validation evidence
 
@@ -44,3 +45,7 @@ Add dated notes here when a schema, provider, or deployment decision changes.
 | 2026-07-12 | `vp run -r build`                                                                                                         | Passed for the web app and utils package.                                                             |
 | 2026-07-12 | `vp run @crdt-rfd/infra#plan`                                                                                             | Passed: exactly one `FoundationBucket` create operation. No resources deployed.                       |
 | 2026-07-12 | `vp check`                                                                                                                | Existing formatting failures remain in 17 specification files; no foundation source failure reported. |
+| 2026-07-13 | `vp test`                                                                                                                 | Passed: 5 files and 82 tests, including migration, OAuth, session, linking, and membership tests.     |
+| 2026-07-13 | `vp run -r build`                                                                                                         | Passed for domain, utils, and the web application.                                                    |
+| 2026-07-13 | Focused `vp check --fix`                                                                                                  | Passed for all changed source, test, manifest, and infrastructure files.                              |
+| 2026-07-13 | `vp check`                                                                                                                | Existing formatting failures remain in generated `routeTree.gen.ts` and 15 unrelated spec files.      |

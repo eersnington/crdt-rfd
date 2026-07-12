@@ -4,5 +4,5 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["alchemy.run.ts"]
+  "include": ["alchemy.run.ts", "tests/**/*.ts"]
 }
