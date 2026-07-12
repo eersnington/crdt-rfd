@@ -14,8 +14,8 @@
 - [ ] Run `bun alchemy deploy`.
 - [ ] Confirm the R2 bucket is live.
 - [ ] Record the deployment.
-- [ ] Add shared domain schemas and tagged errors.
-- [ ] Add frontmatter parser and serializer.
+- [x] Add shared domain schemas and tagged errors.
+- [x] Add frontmatter parser and serializer.
 - [x] Add D1 through Alchemy after the initial deploy gate.
 - [x] Add base migrations.
 - [x] Add GitHub OAuth and sessions.
@@ -25,7 +25,7 @@
 
 ## Blockers
 
-Initial R2 deployment awaits explicit user confirmation.
+Manual `vp dev` verification and final deployment verification await user action.
 
 ## Implementation notes
 
@@ -33,6 +33,7 @@ Add dated notes here when a schema, provider, or deployment decision changes.
 
 - 2026-07-12: Pinned the current Alchemy v2 getting-started dependencies and added an isolated Effect-style stack containing only the onboarding R2 bucket. No deployment has occurred.
 - 2026-07-13: Added the deferred Website D1 binding, base identity/session/authorization migration, Effect service boundaries, pure in-memory implementations, D1 adapters, and local migration/auth tests. No deployment has occurred.
+- 2026-07-13: Per user direction, application resources and local-development wiring were completed before deployment verification. Added request routes for GitHub login, callback, and logout; OAuth transactions are consumed once from D1 and session rotation uses an atomic store operation.
 
 ## Validation evidence
 

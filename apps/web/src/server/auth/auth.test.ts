@@ -56,7 +56,11 @@ describe("GitHub OAuth", () => {
 
   it("returns provider denial without exchanging a code", async () => {
     const error = await Effect.runPromise(
-      completeGitHubOAuth({ query: new URLSearchParams({ error: "access_denied" }), now: 1 }).pipe(
+      completeGitHubOAuth({
+        query: new URLSearchParams({ error: "access_denied", state: "state" }),
+        transaction: { state: "state", verifier: "verifier", expiresAt: 2 },
+        now: 1,
+      }).pipe(
         Effect.provide(
           Layer.succeed(IdentityProvider, {
             exchangeCode: () => Effect.succeed("token"),

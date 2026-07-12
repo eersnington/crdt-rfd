@@ -25,6 +25,7 @@ describe("foundation migration", () => {
       .all();
     expect(names).toEqual([
       "oauth_accounts",
+      "oauth_transactions",
       "rfd_memberships",
       "sessions",
       "users",
