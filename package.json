@@ -36,8 +36,10 @@
     "node": ">=22.18.0"
   },
   "catalog": {
+    "typescript": "^6.0.2",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
-    "vite-plus": "0.2.4"
+    "vite-plus": "0.2.4",
+    "vitest": "4.1.10"
   }
 }
