@@ -1,5 +1,7 @@
 import { ArrowRightIcon, TagIcon, UserIcon } from "@phosphor-icons/react";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import type { RfdState, RfdSummary } from "@crdt-rfd/domain";
+import { useAtom, useAtomValue } from "@effect/atom-react";
+import type { ReactNode } from "react";
 
 import {
   Command,
@@ -12,11 +14,21 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { rfds, stateLabels, type Rfd, type RfdState } from "@/lib/rfd-data";
-
-const stateOrder: RfdState[] = ["discussion", "published", "committed", "draft", "abandoned"];
-const authors = Array.from(new Set(rfds.map((rfd) => rfd.author))).sort();
-const labels = Array.from(new Set(rfds.flatMap((rfd) => rfd.labels))).sort();
+import { stateLabels, stateOrder } from "@/lib/rfd-presentation";
+import {
+  activeFilterCountAtom,
+  availableAuthorsAtom,
+  availableLabelsAtom,
+  catalogAtom,
+  catalogItemsAtom,
+  filteredRfdsAtom,
+  searchDialogOpenAtom,
+  selectedAuthorsAtom,
+  selectedLabelsAtom,
+  selectedStatesAtom,
+  sortDescendingAtom,
+  sortedRfdsAtom,
+} from "@/rpc/client";
 
 export const stateDotClass: Record<RfdState, string> = {
   published: "bg-state-published",
@@ -26,42 +38,27 @@ export const stateDotClass: Record<RfdState, string> = {
   abandoned: "bg-state-abandoned",
 };
 
-type Filters = {
+export type Filters = {
   states: Set<string>;
   authors: Set<string>;
   labels: Set<string>;
 };
 
-type SearchContextValue = {
-  setOpen: (open: boolean) => void;
-  filters: Filters;
-  toggle: (kind: keyof Filters, value: string) => void;
-  clear: () => void;
-  activeCount: number;
-  results: Rfd[];
-};
-
-const SearchContext = createContext<SearchContextValue | null>(null);
-
 export function useRfdSearch() {
-  const context = useContext(SearchContext);
-  if (!context) throw new Error("useRfdSearch must be used within RfdSearchProvider");
-  return context;
-}
-
-export function RfdSearchProvider({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const [states, setStates] = useState<Set<string>>(new Set());
-  const [authorsFilter, setAuthors] = useState<Set<string>>(new Set());
-  const [labelsFilter, setLabels] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useAtom(searchDialogOpenAtom);
+  const [states, setStates] = useAtom(selectedStatesAtom);
+  const [authorsFilter, setAuthors] = useAtom(selectedAuthorsAtom);
+  const [labelsFilter, setLabels] = useAtom(selectedLabelsAtom);
+  const [sortDescending, setSortDescending] = useAtom(sortDescendingAtom);
+  const catalog = useAtomValue(catalogAtom);
+  const catalogItems = useAtomValue(catalogItemsAtom);
+  const authors = useAtomValue(availableAuthorsAtom);
+  const labels = useAtomValue(availableLabelsAtom);
+  const results = useAtomValue(filteredRfdsAtom);
+  const sortedResults = useAtomValue(sortedRfdsAtom);
+  const activeCount = useAtomValue(activeFilterCountAtom);
 
   const filters = { states, authors: authorsFilter, labels: labelsFilter };
-  const activeCount = states.size + authorsFilter.size + labelsFilter.size;
-  const results = [...rfds]
-    .filter((rfd) => states.size === 0 || states.has(rfd.state))
-    .filter((rfd) => authorsFilter.size === 0 || authorsFilter.has(rfd.author))
-    .filter((rfd) => labelsFilter.size === 0 || rfd.labels.some((label) => labelsFilter.has(label)))
-    .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
 
   const toggle = (kind: keyof Filters, value: string) => {
     const setter = kind === "states" ? setStates : kind === "authors" ? setAuthors : setLabels;
@@ -79,7 +76,28 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
     setLabels(new Set());
   };
 
-  const goTo = (rfd: Rfd) => {
+  return {
+    open,
+    setOpen,
+    filters,
+    toggle,
+    clear,
+    activeCount,
+    catalog,
+    catalogItems,
+    authors,
+    labels,
+    results,
+    sortedResults,
+    sortDescending,
+    setSortDescending,
+  };
+}
+
+export function RfdSearchProvider({ children }: { children: ReactNode }) {
+  const { open, setOpen, filters, toggle, catalogItems, authors, labels } = useRfdSearch();
+
+  const goTo = (rfd: RfdSummary) => {
     setOpen(false);
     history.replaceState(null, "", `#rfd-${rfd.number}`);
     requestAnimationFrame(() => {
@@ -90,7 +108,7 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <SearchContext.Provider value={{ setOpen, filters, toggle, clear, activeCount, results }}>
+    <>
       {children}
       <CommandDialog
         open={open}
@@ -104,7 +122,7 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
           <CommandList>
             <CommandEmpty>No matching RFDs.</CommandEmpty>
             <CommandGroup heading="Documents">
-              {rfds.map((rfd) => (
+              {catalogItems.map((rfd) => (
                 <CommandItem
                   key={rfd.number}
                   value={`rfd ${rfd.number} ${rfd.title} ${rfd.author}`}
@@ -172,6 +190,6 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
           </CommandList>
         </Command>
       </CommandDialog>
-    </SearchContext.Provider>
+    </>
   );
 }

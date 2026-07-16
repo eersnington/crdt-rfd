@@ -1,15 +1,4 @@
-export type RfdState = "published" | "discussion" | "draft" | "committed" | "abandoned";
-
-export type Rfd = {
-  number: number;
-  title: string;
-  state: RfdState;
-  author: string;
-  updated: string;
-  labels: string[];
-};
-
-export const rfds: Rfd[] = [
+export const rfds = [
   {
     number: 284,
     title: "Workers Cache in front of Worker entrypoints",
@@ -130,12 +119,4 @@ export const rfds: Rfd[] = [
     updated: "2026-06-16T12:11:00Z",
     labels: ["d1", "queues"],
   },
-];
-
-export const stateLabels: Record<RfdState, string> = {
-  published: "Published",
-  discussion: "Discussion",
-  draft: "Draft",
-  committed: "Committed",
-  abandoned: "Abandoned",
-};
+] as const;

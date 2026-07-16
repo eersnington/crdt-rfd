@@ -1,9 +1,10 @@
 import { ArrowsDownUpIcon, MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import type { RfdState } from "@crdt-rfd/domain";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 
 import { stateDotClass, useRfdSearch } from "@/components/rfd-search";
+import { stateLabels } from "@/lib/rfd-presentation";
 import { cn } from "@/lib/utils";
-import { stateLabels, type RfdState } from "@/lib/rfd-data";
 
 const dateFormat = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -15,9 +16,17 @@ const dateFormat = new Intl.DateTimeFormat("en-US", {
 const filterKindLabel = { states: "State", authors: "Author", labels: "Label" } as const;
 
 export function RfdExplorer() {
-  const { setOpen, filters, toggle, clear, activeCount, results } = useRfdSearch();
-  const [sortDescending, setSortDescending] = useState(true);
-  const sorted = sortDescending ? results : [...results].reverse();
+  const {
+    setOpen,
+    filters,
+    toggle,
+    clear,
+    activeCount,
+    catalog,
+    sortedResults: sorted,
+    sortDescending,
+    setSortDescending,
+  } = useRfdSearch();
   const chips = [
     ...Array.from(filters.states).map((value) => ({
       kind: "states" as const,
@@ -93,6 +102,12 @@ export function RfdExplorer() {
             >
               Clear all
             </button>
+          </div>
+        ) : null}
+
+        {AsyncResult.isFailure(catalog) ? (
+          <div className="border-b py-8 text-sm text-destructive">
+            The RFD catalog could not be loaded. Refresh the page to try again.
           </div>
         ) : null}
 
