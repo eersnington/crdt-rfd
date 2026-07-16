@@ -1,7 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { d1MembershipStore } from "./adapters.ts";
+import { d1MembershipStore } from "../../../src/server/d1/adapters.ts";
 
 const databaseFor = (workspace: unknown, membership: unknown): D1Database =>
   ({

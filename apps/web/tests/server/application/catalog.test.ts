@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
 
-import { RfdCatalog, RfdCatalogLive } from "./catalog";
+import { RfdCatalog, RfdCatalogLive } from "../../../src/server/application/catalog";
 
 describe("RfdCatalog", () => {
   it("decodes the server-owned catalog through the domain schema", async () => {

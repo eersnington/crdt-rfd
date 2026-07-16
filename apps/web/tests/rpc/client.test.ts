@@ -4,9 +4,14 @@ import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import * as AtomRegistry from "effect/unstable/reactivity/AtomRegistry";
 import * as Hydration from "effect/unstable/reactivity/Hydration";
 
-import { dehydrateAtom } from "../lib/atom-hydration";
-import { RfdCatalog, RfdCatalogLive } from "../server/application/catalog";
-import { catalogAtom, selectedLabelsAtom, selectedStatesAtom, sortedRfdsAtom } from "./client";
+import { dehydrateAtom } from "../../src/lib/atom-hydration";
+import {
+  catalogAtom,
+  selectedLabelsAtom,
+  selectedStatesAtom,
+  sortedRfdsAtom,
+} from "../../src/rpc/client";
+import { RfdCatalog, RfdCatalogLive } from "../../src/server/application/catalog";
 
 describe("RFD atoms", () => {
   it("hydrates the RPC catalog and derives filters and ordering", async () => {

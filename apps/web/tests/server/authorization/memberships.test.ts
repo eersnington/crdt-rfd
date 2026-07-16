@@ -1,6 +1,9 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { inMemoryMembershipStoreLayer, loadAuthorizationMemberships } from "./memberships.ts";
+import {
+  inMemoryMembershipStoreLayer,
+  loadAuthorizationMemberships,
+} from "../../../src/server/authorization/memberships.ts";
 
 describe("membership loading", () => {
   it("loads membership separately from authentication", async () => {

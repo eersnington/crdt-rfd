@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Effect, Result } from "effect";
 
-import { makeSessionService } from "./session";
+import { makeSessionService } from "../../../src/server/application/session";
 
 describe("SessionService", () => {
   it("maps a Better Auth session to the stable application contract", async () => {
