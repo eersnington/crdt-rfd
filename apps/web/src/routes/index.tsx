@@ -1,19 +1,40 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useState } from "react";
 
-export const Route = createFileRoute("/")({ component: App });
+import { RfdExplorer } from "@/components/rfd-explorer";
+import { RfdHeader } from "@/components/rfd-header";
+import { RfdSearchProvider } from "@/components/rfd-search";
+import { authClient } from "@/lib/auth-client";
+import { getSession } from "@/server/auth-functions";
+
+export const Route = createFileRoute("/")({
+  loader: () => getSession(),
+  component: App,
+});
 
 function App() {
+  const session = Route.useLoaderData();
+  const router = useRouter();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const signOut = async () => {
+    setIsSigningOut(true);
+    const result = await authClient.signOut();
+
+    if (result.error) {
+      setIsSigningOut(false);
+      return;
+    }
+
+    await router.invalidate();
+  };
+
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-      </div>
-    </div>
+    <RfdSearchProvider>
+      <main className="min-h-svh bg-background">
+        <RfdHeader signedIn={session !== null} signingOut={isSigningOut} onSignOut={signOut} />
+        <RfdExplorer />
+      </main>
+    </RfdSearchProvider>
   );
 }

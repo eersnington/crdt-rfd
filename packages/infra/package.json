@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy": "bun alchemy deploy",
-    "dev": "bun alchemy dev",
-    "destroy": "bun alchemy destroy",
-    "plan": "bun alchemy deploy --dry-run",
+    "dev": "bun alchemy dev --profile crdt-rfd",
+    "deploy": "bun alchemy deploy --profile crdt-rfd",
+    "destroy": "bun alchemy destroy --profile crdt-rfd",
+    "plan": "bun alchemy deploy --profile crdt-rfd --dry-run",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

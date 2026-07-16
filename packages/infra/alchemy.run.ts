@@ -3,12 +3,18 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 
-export const FoundationDatabase = Cloudflare.D1.Database("FoundationDatabase", {
+export const RfdDatabase = Cloudflare.D1.Database("RfdDatabase", {
   migrationsDir: "./migrations",
 });
 
+export const RfdBucket = Cloudflare.R2.Bucket("RfdBucket");
+
 export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
   rootDir: "../../apps/web",
+  dev: {
+    port: 6767,
+    strictPort: true,
+  },
   compatibility: {
     flags: ["nodejs_compat"],
   },
@@ -16,7 +22,7 @@ export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
     runWorkerFirst: true,
   },
   env: {
-    DB: FoundationDatabase,
+    DB: RfdDatabase,
     GITHUB_CLIENT_ID: Config.string("GITHUB_CLIENT_ID"),
     GITHUB_CLIENT_SECRET: Config.redacted("GITHUB_CLIENT_SECRET"),
     APP_ORIGIN: Config.string("APP_ORIGIN"),
@@ -33,8 +39,8 @@ export default Alchemy.Stack(
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
-    const bucket = yield* Cloudflare.R2.Bucket("FoundationBucket");
-    const database = yield* FoundationDatabase;
+    const bucket = yield* RfdBucket;
+    const database = yield* RfdDatabase;
     const website = yield* Website;
 
     return {

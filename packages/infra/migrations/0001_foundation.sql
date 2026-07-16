@@ -6,19 +6,19 @@ CREATE TABLE user (
   email TEXT NOT NULL UNIQUE,
   email_verified INTEGER NOT NULL CHECK (email_verified IN (0, 1)),
   image TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 ) STRICT;
 
 CREATE TABLE session (
   id TEXT PRIMARY KEY NOT NULL,
-  expires_at INTEGER NOT NULL,
+  expires_at TEXT NOT NULL,
   token TEXT NOT NULL UNIQUE,
   ip_address TEXT,
   user_agent TEXT,
   user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 ) STRICT;
 
 CREATE INDEX session_user_id_idx ON session(user_id);
@@ -31,12 +31,12 @@ CREATE TABLE account (
   access_token TEXT,
   refresh_token TEXT,
   id_token TEXT,
-  access_token_expires_at INTEGER,
-  refresh_token_expires_at INTEGER,
+  access_token_expires_at TEXT,
+  refresh_token_expires_at TEXT,
   scope TEXT,
   password TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
   UNIQUE (provider_id, account_id)
 ) STRICT;
 
@@ -46,9 +46,9 @@ CREATE TABLE verification (
   id TEXT PRIMARY KEY NOT NULL,
   identifier TEXT NOT NULL,
   value TEXT NOT NULL,
-  expires_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 ) STRICT;
 
 CREATE INDEX verification_identifier_idx ON verification(identifier);
