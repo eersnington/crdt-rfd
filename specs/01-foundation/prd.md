@@ -1,5 +1,17 @@
 # Foundation PRD
 
+## Superseded assumptions
+
+This workstream is **complete**. Later product decisions supersede some original assumptions:
+
+- Committed storage is **one Artifacts repository per RFD**, not one monorepo for all RFDs.
+- Supermemory and AI keys are **user BYO**, not deployer-only configuration.
+- Agents include **MCP + Code Mode + Dynamic Workers** (workstream 06).
+- Roles target **owner / editor / commenter** (migrate from author / coauthor / reviewer when implementing access).
+- There is **no release polish workstream**.
+
+Keep this PRD as the historical record of foundation deliverables. See `specs/index.md` for the current product model.
+
 ## Goal
 
 Establish the Alchemy v2 deployment package, shared domain contracts, D1 schema, GitHub authentication, and authorization boundaries required by every later workstream.
@@ -18,9 +30,12 @@ None. This workstream is the base of the stack.
 - Add `packages/infra/alchemy.run.ts` as the composition root.
 - Keep application env files under `apps/web` and select `.env` or `.env.production` explicitly
   from the corresponding Alchemy command.
-- Verify the R2 bucket, D1 database, and Website resource through local Alchemy development.
-- Production deployment and deployment-account configuration are operational concerns outside
-  this implementation workstream.
+- Verify the R2 bucket, D1 database, and Website resource through local Alchemy development and
+  production deployment.
+- Derive the Website custom domain from `APP_ORIGIN` rather than hard-coding deployment-specific
+  hostnames.
+- Serve Vite client assets before the TanStack Start Worker while preserving Worker handling for
+  application routes.
 
 The R2 bucket validates Alchemy setup only. It is not the Artifacts repository backend.
 
@@ -128,6 +143,9 @@ Avoid editing Artifacts, editor, comments, or proposal implementation files in t
 
 - `packages/infra` starts the R2, D1, and Website resources in Alchemy development.
 - Development and production commands load their corresponding env files from `apps/web`.
+- Production deployment binds the Website to the hostname from `APP_ORIGIN`.
+- Production HTML, CSS, and JavaScript assets return successful responses with the expected content
+  types.
 - Domain schemas compile without importing Cloudflare runtime types.
 - D1 migrations apply cleanly from zero.
 - GitHub login creates or reconnects a user without requesting repository scopes.

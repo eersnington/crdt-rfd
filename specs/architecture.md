@@ -4,76 +4,92 @@
 
 ### TanStack Start application
 
-The application runs as a Cloudflare Worker deployed through Alchemy. Public pages render RFD indexes and committed documents. Authenticated routes host editing, review, ownership, and provider settings.
+The application runs as a Cloudflare Worker deployed through Alchemy. Public routes render the RFD list and committed documents. Authenticated routes host editing, membership, settings, chat, and agent session surfaces.
 
-Server endpoints use Effect HTTP with schema-validated request and response boundaries. Browser code does not access Artifacts, Supermemory, or AI credentials directly.
+Server endpoints use Effect with schema-validated request and response boundaries. Browser code does not access Artifacts, Supermemory, AI credentials, or Worker Loader directly.
 
-### RFD branch Durable Object
+### RFD Durable Object (document room)
 
-A Durable Object instance is addressed by:
-
-```text
-workspaceId:rfdId:branch
-```
-
-Using the branch in the identity isolates proposal editing from main. Each instance owns:
+A Durable Object instance is addressed by `rfdId` (and branch only if multi-branch editing is introduced later). Each instance owns:
 
 - One active Yjs document
 - WebSocket sessions
 - Awareness and cursor broadcasts
 - Persisted Yjs updates and compacted snapshots
-- The Git base commit SHA
+- The Git base commit SHA for the RFD's Artifact
 - Clean, dirty, checkpointing, or conflicted state
 
-The object does not own committed history. It can reconstruct its base from the corresponding Artifacts branch.
+The object does not own committed history. It reconstructs its base from the RFD's Artifacts repository head when needed.
 
 ### Cloudflare Artifacts
 
-One Artifacts repository is the canonical store for committed content. The Worker uses `env.ARTIFACTS` to access the repository and mint short-lived tokens. Git operations run transiently in the Worker and push to the Artifacts remote. No second repository store is introduced.
+One deployment binds one Artifacts **namespace** (`env.ARTIFACTS`). Inside that namespace, **each RFD is one repository**.
+
+Control plane (binding):
+
+- `create`, `get`, `list`, `delete`, `import`
+- Repo handle: `createToken`, `listTokens`, `revokeToken`, `fork`, `log`, `readCommit`, `readTree`
+
+Data plane (Git):
+
+- Binding does not read or write file contents.
+- Workers use isomorphic-git with a transient in-memory filesystem to commit and push to the repo `remote`.
+- Git Basic auth password is the token secret only (`token.split("?expires=")[0]` when expiry metadata is present).
+
+Default repo name: `rfd-{rfdId}`. Default document path: `rfd.md`.
 
 ### D1
 
 D1 stores operational state that does not belong in RFD Markdown:
 
 - Users, sessions, and GitHub identities
-- RFD ownership and role assignments
+- RFD catalog (public list metadata, artifact repo name, head SHA, fork lineage)
+- RFD memberships and comment policy
 - Comment threads and replies
-- Proposal workflow status
-- Push-event idempotency
-- Usage quotas and provider preferences
-- Encrypted user AI credentials when enabled
+- User Supermemory config and encrypted AI credentials
+- Interaction markers used for indexing scope
+- Push-event or job idempotency keys when used
 
 ### Supermemory
 
-Supermemory is a derived index. It can be disabled, hosted, or self-hosted. Artifacts remains canonical, so the index can be rebuilt from committed main-branch documents.
+Supermemory is a per-user derived index. Configuration is owned by the user (hosted API key, or self-hosted base URL + key, or off). Artifacts remain canonical for document bodies.
 
-### Proposal model
+### Agents: MCP, Code Mode, Dynamic Workers
 
-The proposal model is selected through an Effect layer. Deployer-funded mode uses the Workers AI binding. User-funded mode calls Workers AI's REST API with the signed-in user's account ID and API token.
+These are layered, not three independent backends.
+
+| Layer | Role |
+| --- | --- |
+| Remote MCP | Standard tool surface for Cursor, Claude, and other MCP hosts; OAuth as the user |
+| Code Mode (`@cloudflare/codemode`) | Model writes one JS plan that composes tools; progressive discovery via `codemode.search` / `describe` |
+| Dynamic Workers (`env.LOADER`) | Isolated executor for that plan (`DynamicWorkerExecutor`); default no outbound network |
+| Connectors | Host-side tool implementations (Effect services); secrets stay on the host |
+
+Code Mode is experimental. Isolate it behind a clear package boundary.
 
 ## Service boundaries
 
 Application code depends on Effect services rather than Cloudflare bindings directly.
 
 ```ts
+RfdCatalog
+  list
+  get
+  create
+  assignRole
+  setCommentPolicy
+
 RfdRepository
   read
   history
   checkpoint
-  createProposalBranch
-  compare
-  merge
+  fork
+  mintCloneToken
 
 DocumentRooms
   connect
   snapshot
   notifyExternalCommit
-
-RfdCatalog
-  list
-  getMetadata
-  create
-  assignRole
 
 Comments
   createThread
@@ -81,16 +97,33 @@ Comments
   resolve
   listForDocument
 
-Memory
-  indexCommit
+UserMemory
+  configure
+  indexInteraction
   search
-  removeCommit
+  health
 
-ProposalModel
-  generateRevision
+Chat
+  complete  // user AI key + memory context
+
+AgentRuntime
+  mcp tools
+  codemode runtime handle
 ```
 
-Each implementation maps provider failures into tagged domain errors with enough context to retry or recover.
+Each implementation maps provider failures into tagged domain errors.
+
+## Create RFD flow
+
+```text
+createRfd(user)
+  -> allocate RfdId
+  -> env.ARTIFACTS.create("rfd-{id}", { setDefaultBranch: "main" })
+  -> isomorphic-git: write rfd.md, commit, push remote
+  -> D1 catalog row (owner, public, artifactName, headSha)
+  -> D1 membership owner
+  -> return RfdSummary
+```
 
 ## Realtime editing flow
 
@@ -103,77 +136,96 @@ Browser edit
   -> broadcast to peers
 ```
 
-Awareness data is ephemeral and is not part of the persisted RFD. Document updates are persisted before acknowledgement when needed for recovery. Periodic compaction replaces long update histories with a full Yjs snapshot.
-
-## Document bootstrap
-
-1. Resolve the branch head in Artifacts.
-2. Load the existing Yjs snapshot when its base SHA matches the branch head.
-3. Otherwise read the committed Markdown and build a new Yjs document server-side.
-4. Persist the snapshot and base SHA before accepting collaborative edits.
-5. Connect the browser after initialization completes.
-
-Server-side bootstrap prevents two first clients from initializing different documents.
+Awareness is ephemeral and is not part of the committed RFD.
 
 ## Checkpoint flow
 
 ```text
 Durable Object snapshot
-  -> Tiptap/ProseMirror Markdown serialization
+  -> Markdown serialization
   -> frontmatter and Markdown validation
-  -> expected-head comparison
-  -> transient Git commit
-  -> push to Cloudflare Artifacts
+  -> mint short-lived write token for that repo
+  -> isomorphic-git commit + push to Artifacts remote
   -> update room base SHA and clean state
-  -> enqueue Supermemory indexing for main
+  -> update D1 catalog head / updatedAt
+  -> enqueue user memory indexing for interactors
 ```
 
-The push must be conditional on the expected parent. A changed remote head produces `BranchAdvanced`, leaving the Yjs draft intact.
+## Fork flow
 
-## Proposal flow
-
-1. Checkpoint the source branch.
-2. Create a proposal branch from the resulting commit.
-3. Search Supermemory for relevant decisions and constraints.
-4. Build a bounded prompt with the current RFD, memory citations, instruction, and allowed path.
-5. Generate a candidate Markdown body through `ProposalModel`.
-6. Validate metadata, path restrictions, Markdown, and output size.
-7. Commit and push to the proposal branch.
-8. Store proposal status and summary in D1.
-9. Render a source-to-proposal diff for review.
-
-The model cannot push directly and never receives a repository token.
+```text
+forkRfd(sourceId, user)
+  -> load source catalog + artifact name
+  -> sourceRepo = ARTIFACTS.get(sourceName)
+  -> sourceRepo.fork("rfd-{newId}", { defaultBranchOnly: true })
+  -> D1 new RFD owner=user, forkedFrom={ sourceId, commitSha? }
+  -> return new RfdSummary
+```
 
 ## Comment model
 
-Live comments use encoded Yjs relative positions so their ranges move with concurrent edits. Diff comments use immutable comparison coordinates:
+Live comments use encoded Yjs relative positions so ranges move with concurrent edits.
 
 ```ts
 type CommentAnchor =
-  | { _tag: "DocumentRange"; branch: string; start: Uint8Array; end: Uint8Array }
-  | { _tag: "DiffLine"; baseSha: string; headSha: string; side: "base" | "head"; line: number }
+  | { _tag: "DocumentRange"; start: Uint8Array; end: Uint8Array }
 ```
 
 Thread data lives in D1. The Durable Object distributes changes to connected clients.
 
-## External push flow
+## Memory and chat flow
 
 ```text
-Artifacts pushed event
-  -> validate and deduplicate
-  -> resolve changed refs and RFD paths
-  -> notify affected Durable Objects
-  -> reload clean rooms or mark dirty rooms conflicted
-  -> index committed main changes
+user configures Supermemory (hosted | self-hosted | off) + AI keys
+interact / checkpoint
+  -> if memory on: add document with containerTag user_{userId}
+     customId rfd:{rfdId}:commit:{sha}
+chat
+  -> profile/search on containerTag
+  -> call user model with bounded citations
 ```
 
-Conflict resolution operates on a preserved local Yjs snapshot and the new remote Markdown. Neither side is silently discarded.
+## Agent flow
+
+```text
+External MCP client
+  -> OAuth as user
+  -> MCP tools call Effect services
+
+In-app agent
+  -> createCodemodeRuntime({
+       ctx,
+       executor: new DynamicWorkerExecutor({ loader: env.LOADER }),
+       connectors: [RfdConnector, MemoryConnector],
+     })
+  -> model calls codemode tool with generated code
+  -> sandbox invokes connector methods via RPC
+  -> connectors enforce authz and call Effect services
+```
+
+Sandbox policy:
+
+- No Artifacts binding, no user API keys, no open `fetch` by default (`globalOutbound: null`).
+- Mutations that create side effects may set `requiresApproval: true` and pause for human approve/reject.
+
+## External push flow (slim)
+
+When Artifacts push events are wired:
+
+```text
+repo.pushed
+  -> resolve RFD by artifact name
+  -> notify document room
+  -> reload clean rooms or mark dirty rooms conflicted
+  -> reindex for users who track that RFD
+```
+
+Conflict resolution preserves local Yjs draft and remote Markdown; neither side is silently discarded.
 
 ## Consistency rules
 
-- Artifacts is authoritative for committed content.
+- Each RFD's Artifacts repository is authoritative for committed content of that RFD.
 - The Durable Object may contain newer uncommitted content.
-- Every branch operation begins with a checkpoint or explicit clean-state verification.
-- Every room records the commit from which its Yjs document was initialized.
-- Supermemory only indexes commits that are reachable from main.
-- D1 references Git commits but does not duplicate committed document bodies.
+- Checkpoints target only the selected RFD repository.
+- Supermemory never becomes the source of truth for document bodies.
+- D1 references artifact names and commit SHAs but does not store full bodies as canonical history.
