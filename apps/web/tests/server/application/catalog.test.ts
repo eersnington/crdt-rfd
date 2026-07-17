@@ -6,7 +6,7 @@ import { RfdCatalog, RfdCatalogLive } from "../../../src/server/application/cata
 describe("RfdCatalog", () => {
   it("decodes the server-owned catalog through the domain schema", async () => {
     const catalog = await Effect.runPromise(
-      Effect.flatMap(RfdCatalog, (service) => service.list).pipe(Effect.provide(RfdCatalogLive)),
+      Effect.flatMap(RfdCatalog, (service) => service.list()).pipe(Effect.provide(RfdCatalogLive)),
     );
 
     expect(catalog).toHaveLength(15);

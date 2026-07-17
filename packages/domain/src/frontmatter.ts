@@ -4,7 +4,16 @@ import { RfdStatus } from "./contracts.ts";
 import { ValidationError } from "./errors.ts";
 import { RfdNumber } from "./values.ts";
 
-const DateOnly = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/));
+const DateOnly = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/),
+  Schema.makeFilter(
+    (value) => {
+      const date = new Date(`${value}T00:00:00.000Z`);
+      return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+    },
+    { expected: "a valid calendar date in YYYY-MM-DD format" },
+  ),
+);
 const Principal = Schema.String.check(
   Schema.isPattern(/^github:[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/),
 );

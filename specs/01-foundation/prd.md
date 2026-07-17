@@ -69,8 +69,9 @@ Required constraints:
 - Implement GitHub OAuth with state and PKCE.
 - Use secure, HTTP-only, same-site cookies.
 - Rotate the session after login and privilege changes.
-- Keep OAuth provider calls behind an `IdentityProvider` Effect service.
-- Keep session persistence behind a `SessionStore` Effect service.
+- Keep Better Auth construction behind one Effect service boundary. Better Auth owns the GitHub
+  provider flow and session persistence internals; application code consumes a separate current-session
+  projection rather than depending on Better Auth's response shape.
 - Do not make GitHub repository access part of the requested OAuth scope.
 
 ### Authorization

@@ -1,9 +1,8 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { RfdMembership, WorkspaceSettings } from "@crdt-rfd/domain";
-import { Effect, Layer, Result, Schema, SchemaParser } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import {
   MembershipStore,
-  type AuthorizationMemberships,
   type MembershipStoreShape,
   MembershipStoreError,
 } from "../authorization/memberships.ts";
@@ -25,59 +24,43 @@ const RfdMembershipRow = Schema.Struct({
   updated_at: Timestamp,
 });
 
-const decodeWorkspaceSettingsRow = SchemaParser.decodeUnknownResult(WorkspaceSettingsRow, {
-  onExcessProperty: "error",
-});
-const decodeRfdMembershipRow = SchemaParser.decodeUnknownResult(RfdMembershipRow, {
-  onExcessProperty: "error",
-});
-const decodeWorkspaceSettings = SchemaParser.decodeUnknownResult(WorkspaceSettings, {
-  onExcessProperty: "error",
-});
-const decodeRfdMembership = SchemaParser.decodeUnknownResult(RfdMembership, {
-  onExcessProperty: "error",
+const parseWorkspaceSettings = Effect.fn("MembershipStore.decodeWorkspaceSettings")(function* (
+  row: unknown,
+) {
+  const decoded = yield* Schema.decodeUnknownEffect(WorkspaceSettingsRow, {
+    onExcessProperty: "error",
+  })(row);
+  return yield* Schema.decodeUnknownEffect(WorkspaceSettings, {
+    onExcessProperty: "error",
+  })({
+    workspaceId: decoded.workspace_id,
+    ownerUserId: decoded.owner_user_id,
+    reviewerCanMerge: decoded.reviewer_can_merge === 1,
+    createdAt: new Date(decoded.created_at),
+    updatedAt: new Date(decoded.updated_at),
+  });
 });
 
-const decode = <A>(
-  decoded: Result.Result<A, unknown>,
-  table: "workspace_settings" | "rfd_memberships",
-): A => {
-  if (Result.isFailure(decoded))
-    throw new Error(`Invalid ${table} row: ${String(decoded.failure)}`);
-  return decoded.success;
-};
-
-const parseWorkspaceSettings = (row: unknown) => {
-  const decoded = decode(decodeWorkspaceSettingsRow(row), "workspace_settings");
-  return decode(
-    decodeWorkspaceSettings({
-      workspaceId: decoded.workspace_id,
-      ownerUserId: decoded.owner_user_id,
-      reviewerCanMerge: decoded.reviewer_can_merge === 1,
-      createdAt: new Date(decoded.created_at),
-      updatedAt: new Date(decoded.updated_at),
-    }),
-    "workspace_settings",
-  );
-};
-
-const parseRfdMembership = (row: unknown) => {
-  const decoded = decode(decodeRfdMembershipRow(row), "rfd_memberships");
-  return decode(
-    decodeRfdMembership({
-      workspaceId: decoded.workspace_id,
-      rfdId: decoded.rfd_id,
-      userId: decoded.user_id,
-      role: decoded.role,
-      createdAt: new Date(decoded.created_at),
-      updatedAt: new Date(decoded.updated_at),
-    }),
-    "rfd_memberships",
-  );
-};
+const parseRfdMembership = Effect.fn("MembershipStore.decodeRfdMembership")(function* (
+  row: unknown,
+) {
+  const decoded = yield* Schema.decodeUnknownEffect(RfdMembershipRow, {
+    onExcessProperty: "error",
+  })(row);
+  return yield* Schema.decodeUnknownEffect(RfdMembership, {
+    onExcessProperty: "error",
+  })({
+    workspaceId: decoded.workspace_id,
+    rfdId: decoded.rfd_id,
+    userId: decoded.user_id,
+    role: decoded.role,
+    createdAt: new Date(decoded.created_at),
+    updatedAt: new Date(decoded.updated_at),
+  });
+});
 
 export const d1MembershipStore = (database: D1Database): MembershipStoreShape => ({
-  load: ({ userId, workspaceId, rfdId }) =>
+  load: Effect.fn("MembershipStore.d1.load")(({ userId, workspaceId, rfdId }) =>
     Effect.tryPromise({
       try: async () => {
         const workspaceRow = await database
@@ -95,20 +78,36 @@ export const d1MembershipStore = (database: D1Database): MembershipStoreShape =>
                 )
                 .bind(workspaceId, rfdId, userId)
                 .first();
-        const workspace = workspaceRow === null ? undefined : parseWorkspaceSettings(workspaceRow);
-        const membership = membershipRow === null ? undefined : parseRfdMembership(membershipRow);
-        return {
-          workspaceOwner: workspace?.ownerUserId === userId,
-          rfdRole: membership?.role,
-          policy: { reviewerCanMerge: workspace?.reviewerCanMerge === true },
-        } satisfies AuthorizationMemberships;
+        return { workspaceRow, membershipRow };
       },
-      catch: (cause) =>
-        new MembershipStoreError({
-          operation: "load",
-          message: `D1 membership load failed: ${String(cause)}`,
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.flatMap(({ workspaceRow, membershipRow }) =>
+        Effect.all({
+          workspace:
+            workspaceRow === null
+              ? Effect.succeed(undefined)
+              : parseWorkspaceSettings(workspaceRow),
+          membership:
+            membershipRow === null ? Effect.succeed(undefined) : parseRfdMembership(membershipRow),
         }),
-    }),
+      ),
+      Effect.map(({ workspace, membership }) => ({
+        workspaceOwner: workspace?.ownerUserId === userId,
+        ...(membership === undefined ? {} : { rfdRole: membership.role }),
+        policy: { reviewerCanMerge: workspace?.reviewerCanMerge === true },
+      })),
+      Effect.mapError(
+        (cause) =>
+          new MembershipStoreError({
+            operation: "load",
+            message:
+              "D1 could not load valid authorization memberships. Check the database query and stored row shape.",
+            cause,
+          }),
+      ),
+    ),
+  ),
 });
 
 export const d1MembershipStoreLayer = (database: D1Database) =>

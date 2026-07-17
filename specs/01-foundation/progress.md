@@ -33,7 +33,10 @@ Add dated notes here when a schema, provider, or deployment decision changes.
 
 - 2026-07-12: Pinned the current Alchemy v2 getting-started dependencies and added an isolated Effect-style stack containing only the onboarding R2 bucket. No deployment has occurred.
 - 2026-07-13: Added the deferred Website D1 binding, base identity/session/authorization migration, Effect service boundaries, pure in-memory implementations, D1 adapters, and local migration/auth tests. No deployment has occurred.
-- 2026-07-13: Per user direction, application resources and local-development wiring were completed before deployment verification. Added request routes for GitHub login, callback, and logout; OAuth transactions are consumed once from D1 and session rotation uses an atomic store operation.
+- 2026-07-13: Per user direction, application resources and local-development wiring were completed before deployment verification. Added Better Auth request routes for GitHub login, callback, and logout.
+- 2026-07-17: Kept Better Auth as the OAuth/session owner behind one Effect service boundary. Added a Drizzle adapter wrapper that stores SHA-256 session-token digests and hashes token predicates for reads, updates, and deletion. Each OAuth login issues a fresh session; future privilege-changing endpoints must rotate or revoke sessions when they are introduced.
+- 2026-07-17: Disabled Better Auth's token-based list-session and selective-revocation endpoints because one-way digests cannot safely implement their bearer-token contract. Normal sign-out and revoke-all behavior remain available; selective management requires a future session-ID API.
+- 2026-07-17: Tightened domain brands, Git refs, paths, dates, proposal states, and serializable errors; enforced the initial-author database invariant; and added production RPC plus OAuth/session integration coverage.
 
 ## Validation evidence
 
@@ -53,3 +56,7 @@ Add dated notes here when a schema, provider, or deployment decision changes.
 | 2026-07-13 | `vp test`                                                                                                                 | Passed: 5 files and 82 tests.                                                                         |
 | 2026-07-13 | `vp run -r build`                                                                                                         | Passed for domain, utils, and the TanStack Start application.                                         |
 | 2026-07-13 | Focused `vp check`                                                                                                        | Passed for all foundation source, tests, manifests, and progress files.                               |
+| 2026-07-17 | `vp install`                                                                                                              | Passed; removed the unused shadcn CLI and refreshed the lockfile.                                      |
+| 2026-07-17 | `vp check`                                                                                                                | Passed formatting, lint, and type checking for the full repository.                                   |
+| 2026-07-17 | `vp test`                                                                                                                 | Passed: 11 files and 97 tests, including OAuth, hashed sessions, RPC transport, domain, and migration. |
+| 2026-07-17 | `vp run -r build`                                                                                                         | Passed for domain, utils, and the TanStack Start application.                                         |

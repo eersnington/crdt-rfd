@@ -17,7 +17,7 @@ function App() {
   const state = Route.useLoaderData();
 
   return (
-    <RegistryProvider key={state[0]?.dehydratedAt} defaultIdleTTL={60_000}>
+    <RegistryProvider defaultIdleTTL={60_000}>
       <HydrationBoundary state={state}>
         <Archive />
       </HydrationBoundary>

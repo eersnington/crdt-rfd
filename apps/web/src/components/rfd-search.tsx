@@ -1,6 +1,7 @@
 import { ArrowRightIcon, TagIcon, UserIcon } from "@phosphor-icons/react";
-import type { RfdState, RfdSummary } from "@crdt-rfd/domain";
+import type { RfdStatus, RfdSummary } from "@crdt-rfd/domain";
 import { useAtom, useAtomValue } from "@effect/atom-react";
+import { useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import {
@@ -14,39 +15,50 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { stateLabels, stateOrder } from "@/lib/rfd-presentation";
+import { statusLabels, statusOrder } from "@/lib/rfd-presentation";
 import {
   activeFilterCountAtom,
   availableAuthorsAtom,
   availableLabelsAtom,
   catalogAtom,
   catalogItemsAtom,
-  filteredRfdsAtom,
   searchDialogOpenAtom,
   selectedAuthorsAtom,
   selectedLabelsAtom,
-  selectedStatesAtom,
+  selectedStatusesAtom,
   sortDescendingAtom,
   sortedRfdsAtom,
 } from "@/rpc/client";
 
-export const stateDotClass: Record<RfdState, string> = {
-  published: "bg-state-published",
+export const statusDotClass: Record<RfdStatus, string> = {
+  accepted: "bg-status-accepted",
   discussion: "bg-state-discussion",
   draft: "bg-state-draft",
-  committed: "bg-state-committed",
-  abandoned: "bg-state-abandoned",
+  rejected: "bg-status-rejected",
+  superseded: "bg-status-superseded",
 };
 
 export type Filters = {
-  states: Set<string>;
+  statuses: Set<RfdStatus>;
   authors: Set<string>;
   labels: Set<string>;
 };
 
+export type Filter =
+  | { readonly kind: "statuses"; readonly value: RfdStatus }
+  | { readonly kind: "authors"; readonly value: string }
+  | { readonly kind: "labels"; readonly value: string };
+
+const toggled = <A,>(values: Set<A>, value: A) => {
+  const next = new Set(values);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+};
+
 export function useRfdSearch() {
   const [open, setOpen] = useAtom(searchDialogOpenAtom);
-  const [states, setStates] = useAtom(selectedStatesAtom);
+  const [statuses, setStatuses] = useAtom(selectedStatusesAtom);
   const [authorsFilter, setAuthors] = useAtom(selectedAuthorsAtom);
   const [labelsFilter, setLabels] = useAtom(selectedLabelsAtom);
   const [sortDescending, setSortDescending] = useAtom(sortDescendingAtom);
@@ -54,24 +66,27 @@ export function useRfdSearch() {
   const catalogItems = useAtomValue(catalogItemsAtom);
   const authors = useAtomValue(availableAuthorsAtom);
   const labels = useAtomValue(availableLabelsAtom);
-  const results = useAtomValue(filteredRfdsAtom);
   const sortedResults = useAtomValue(sortedRfdsAtom);
   const activeCount = useAtomValue(activeFilterCountAtom);
 
-  const filters = { states, authors: authorsFilter, labels: labelsFilter };
+  const filters = { statuses, authors: authorsFilter, labels: labelsFilter };
 
-  const toggle = (kind: keyof Filters, value: string) => {
-    const setter = kind === "states" ? setStates : kind === "authors" ? setAuthors : setLabels;
-    setter((previous) => {
-      const next = new Set(previous);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return next;
-    });
+  const toggle = (filter: Filter) => {
+    switch (filter.kind) {
+      case "statuses":
+        setStatuses((previous) => toggled(previous, filter.value));
+        break;
+      case "authors":
+        setAuthors((previous) => toggled(previous, filter.value));
+        break;
+      case "labels":
+        setLabels((previous) => toggled(previous, filter.value));
+        break;
+    }
   };
 
   const clear = () => {
-    setStates(new Set());
+    setStatuses(new Set());
     setAuthors(new Set());
     setLabels(new Set());
   };
@@ -87,7 +102,6 @@ export function useRfdSearch() {
     catalogItems,
     authors,
     labels,
-    results,
     sortedResults,
     sortDescending,
     setSortDescending,
@@ -95,11 +109,13 @@ export function useRfdSearch() {
 }
 
 export function RfdSearchProvider({ children }: { children: ReactNode }) {
-  const { open, setOpen, filters, toggle, catalogItems, authors, labels } = useRfdSearch();
+  const navigate = useNavigate();
+  const { open, setOpen, filters, toggle, clear, catalogItems, authors, labels } = useRfdSearch();
 
-  const goTo = (rfd: RfdSummary) => {
+  const goTo = async (rfd: RfdSummary) => {
+    clear();
     setOpen(false);
-    history.replaceState(null, "", `#rfd-${rfd.number}`);
+    await navigate({ to: "/", hash: `rfd-${rfd.number}`, replace: true });
     requestAnimationFrame(() => {
       document
         .getElementById(`rfd-${rfd.number}`)
@@ -126,7 +142,7 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
                 <CommandItem
                   key={rfd.number}
                   value={`rfd ${rfd.number} ${rfd.title} ${rfd.author}`}
-                  onSelect={() => goTo(rfd)}
+                  onSelect={() => void goTo(rfd)}
                   className="gap-3"
                 >
                   <span className="font-mono text-xs tabular-nums text-primary">
@@ -135,29 +151,31 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
                   <span className="truncate text-foreground">{rfd.title}</span>
                   <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
                     <span
-                      className={cn("size-1.5 rounded-full", stateDotClass[rfd.state])}
+                      className={cn("size-1.5 rounded-full", statusDotClass[rfd.status])}
                       aria-hidden="true"
                     />
-                    {stateLabels[rfd.state]}
+                    {statusLabels[rfd.status]}
                   </span>
                   <ArrowRightIcon className="text-muted-foreground opacity-0 group-data-selected/command-item:opacity-100" />
                 </CommandItem>
               ))}
             </CommandGroup>
             <CommandSeparator />
-            <CommandGroup heading="Filter by state">
-              {stateOrder.map((state) => (
+            <CommandGroup heading="Filter by status">
+              {statusOrder.map((status) => (
                 <CommandItem
-                  key={state}
-                  value={`state ${stateLabels[state]}`}
-                  data-checked={filters.states.has(state)}
-                  onSelect={() => toggle("states", state)}
+                  key={status}
+                  value={`status ${statusLabels[status]}`}
+                  data-checked={filters.statuses.has(status)}
+                  role="menuitemcheckbox"
+                  aria-checked={filters.statuses.has(status)}
+                  onSelect={() => toggle({ kind: "statuses", value: status })}
                 >
                   <span
-                    className={cn("size-2 rounded-full", stateDotClass[state])}
+                    className={cn("size-2 rounded-full", statusDotClass[status])}
                     aria-hidden="true"
                   />
-                  <span>{stateLabels[state]}</span>
+                  <span>{statusLabels[status]}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -167,7 +185,9 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
                   key={author}
                   value={`author ${author}`}
                   data-checked={filters.authors.has(author)}
-                  onSelect={() => toggle("authors", author)}
+                  role="menuitemcheckbox"
+                  aria-checked={filters.authors.has(author)}
+                  onSelect={() => toggle({ kind: "authors", value: author })}
                 >
                   <UserIcon />
                   <span>{author}</span>
@@ -180,7 +200,9 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
                   key={label}
                   value={`label ${label}`}
                   data-checked={filters.labels.has(label)}
-                  onSelect={() => toggle("labels", label)}
+                  role="menuitemcheckbox"
+                  aria-checked={filters.labels.has(label)}
+                  onSelect={() => toggle({ kind: "labels", value: label })}
                 >
                   <TagIcon />
                   <span>{label}</span>

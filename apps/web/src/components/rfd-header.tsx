@@ -1,9 +1,10 @@
 import { MagnifyingGlassIcon, TreeStructureIcon } from "@phosphor-icons/react";
+import { useAtomSet } from "@effect/atom-react";
 import { Link } from "@tanstack/react-router";
 
-import { useRfdSearch } from "@/components/rfd-search";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { searchDialogOpenAtom } from "@/rpc/client";
 
 export function RfdHeader({
   signedIn,
@@ -14,7 +15,7 @@ export function RfdHeader({
   signingOut: boolean;
   onSignOut: () => void;
 }) {
-  const { setOpen } = useRfdSearch();
+  const setOpen = useAtomSet(searchDialogOpenAtom);
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur-sm">
@@ -22,7 +23,9 @@ export function RfdHeader({
         <Link to="/" className="flex items-center gap-2.5">
           <TreeStructureIcon size={22} />
           <span className="font-mono text-sm font-medium tracking-[0.2em] text-primary">RFD</span>
-          <span className="font-mono text-sm font-medium tracking-[0.2em]">Archive</span>
+          <span className="hidden font-mono text-sm font-medium tracking-[0.2em] sm:inline">
+            Archive
+          </span>
         </Link>
 
         <div className="flex items-center gap-2">
@@ -38,7 +41,11 @@ export function RfdHeader({
           </Button>
           <ThemeToggle />
           {signedIn ? (
-            <Button disabled={signingOut} onClick={onSignOut}>
+            <Button
+              className="px-2 text-xs sm:px-4 sm:text-sm"
+              disabled={signingOut}
+              onClick={onSignOut}
+            >
               {signingOut ? "Signing out…" : "Sign out"}
             </Button>
           ) : (

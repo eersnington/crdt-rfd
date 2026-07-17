@@ -1,21 +1,12 @@
+import { Schema } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
+import type * as Hydration from "effect/unstable/reactivity/Hydration";
 
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | ReadonlyArray<JsonValue>
-  | { readonly [key: string]: JsonValue };
+export type DehydratedAtomValue = Omit<Hydration.DehydratedAtomValue, "value" | "resultPromise"> & {
+  readonly value: Schema.Json;
+};
 
-export interface DehydratedAtomValue {
-  readonly "~effect/reactivity/DehydratedAtom": true;
-  readonly key: string;
-  readonly value: JsonValue;
-  readonly dehydratedAt: number;
-}
-
-export const dehydrateAtom = (atom: Atom.Atom<any>, value: unknown): DehydratedAtomValue => {
+export const dehydrateAtom = <A>(atom: Atom.Atom<A>, value: A): DehydratedAtomValue => {
   if (!Atom.isSerializable(atom)) {
     throw new Error("Cannot dehydrate an atom without serialization metadata");
   }
@@ -23,7 +14,7 @@ export const dehydrateAtom = (atom: Atom.Atom<any>, value: unknown): DehydratedA
   return {
     "~effect/reactivity/DehydratedAtom": true,
     key: atom[Atom.SerializableTypeId].key,
-    value: atom[Atom.SerializableTypeId].encode(value) as JsonValue,
+    value: Schema.decodeUnknownSync(Schema.Json)(atom[Atom.SerializableTypeId].encode(value)),
     dehydratedAt: Date.now(),
   };
 };

@@ -3,8 +3,7 @@ import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
-import { ApplicationRpc } from "@/rpc/contracts";
-import { applicationMemoMap } from "./runtime";
+import { ApplicationRpc } from "../../rpc/contracts";
 import { ApplicationRpcLive } from "./rpc-handlers";
 
 const RpcServerLive = RpcServer.layerHttp({
@@ -17,6 +16,4 @@ const RpcServerLive = RpcServer.layerHttp({
 
 const HttpLive = Layer.provideMerge(RpcServerLive, HttpRouter.layer);
 
-export const rpcWebHandler = HttpRouter.toWebHandler(HttpLive, {
-  memoMap: applicationMemoMap,
-});
+export const rpcWebHandler = HttpRouter.toWebHandler(HttpLive);

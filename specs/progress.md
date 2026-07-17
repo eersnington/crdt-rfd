@@ -13,10 +13,10 @@
 | ---------------------------- | ----------- | -------------------------------------------------------------------- |
 | Product specification        | complete    | Initial implementation specification captured in `specs/`            |
 | Alchemy foundation           | in-progress | One-bucket stack plans successfully; deployment confirmation pending |
-| Domain model                 | not-started | Schemas and tagged errors are not implemented                        |
-| Authentication and ownership | not-started | GitHub OAuth and D1 authorization pending                            |
+| Domain model                 | in-progress | Foundation schemas and tagged errors are implemented                 |
+| Authentication and ownership | in-progress | Better Auth, hashed sessions, and D1 authorization are implemented   |
 | Artifacts repository         | not-started | Binding, bootstrap, and Git operations pending                       |
-| Public reader                | not-started | Index and reader pending                                             |
+| Public reader                | in-progress | Fixture-backed index exists; Artifacts integration remains           |
 | Editor and Markdown          | not-started | Tiptap round-trip spike required first                               |
 | CRDT collaboration           | not-started | Yjs Durable Object pending                                           |
 | Checkpointing                | not-started | Depends on editor and Artifacts integration                          |
@@ -43,10 +43,10 @@
 | PR  | Deliverable                                                        | Dependencies | Status      |
 | --- | ------------------------------------------------------------------ | ------------ | ----------- |
 | 01  | `packages/infra`, Alchemy v2, one R2 bucket, confirmed deployment  | none         | in-progress |
-| 02  | Domain schemas, errors, frontmatter parser, Markdown fixtures      | 01           | not-started |
-| 03  | D1 migrations, GitHub OAuth, ownership and authorization           | 02           | not-started |
+| 02  | Domain schemas, errors, frontmatter parser, Markdown fixtures      | 01           | in-progress |
+| 03  | D1 migrations, GitHub OAuth, ownership and authorization           | 02           | in-progress |
 | 04  | Artifacts binding, repository bootstrap, read and write operations | 02           | not-started |
-| 05  | Public RFD index and reader backed by Artifacts                    | 04           | not-started |
+| 05  | Public RFD index and reader backed by Artifacts                    | 04           | in-progress |
 | 06  | Tiptap Markdown round-trip spike and supported syntax policy       | 02           | not-started |
 | 07  | Single-user WYSIWYG editor and metadata controls                   | 05, 06       | not-started |
 | 08  | Yjs Durable Object, WebSocket transport, server bootstrap          | 03, 07       | not-started |

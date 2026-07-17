@@ -1,17 +1,17 @@
-import type { RfdState } from "@crdt-rfd/domain";
+import type { RfdStatus } from "@crdt-rfd/domain";
 
-export const stateOrder: ReadonlyArray<RfdState> = [
+export const statusOrder: ReadonlyArray<RfdStatus> = [
   "discussion",
-  "published",
-  "committed",
+  "accepted",
   "draft",
-  "abandoned",
+  "rejected",
+  "superseded",
 ];
 
-export const stateLabels: Record<RfdState, string> = {
-  published: "Published",
+export const statusLabels: Record<RfdStatus, string> = {
+  accepted: "Accepted",
   discussion: "Discussion",
   draft: "Draft",
-  committed: "Committed",
-  abandoned: "Abandoned",
+  rejected: "Rejected",
+  superseded: "Superseded",
 };

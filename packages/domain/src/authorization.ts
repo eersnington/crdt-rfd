@@ -30,8 +30,8 @@ export const WorkspaceSettings = Schema.Struct({
   workspaceId: WorkspaceId,
   ownerUserId: UserId,
   reviewerCanMerge: Schema.Boolean,
-  createdAt: Schema.Date,
-  updatedAt: Schema.Date,
+  createdAt: Schema.DateValid,
+  updatedAt: Schema.DateValid,
 });
 export type WorkspaceSettings = typeof WorkspaceSettings.Type;
 
@@ -40,8 +40,8 @@ export const RfdMembership = Schema.Struct({
   rfdId: RfdId,
   userId: UserId,
   role: RfdRole,
-  createdAt: Schema.Date,
-  updatedAt: Schema.Date,
+  createdAt: Schema.DateValid,
+  updatedAt: Schema.DateValid,
 });
 export type RfdMembership = typeof RfdMembership.Type;
 

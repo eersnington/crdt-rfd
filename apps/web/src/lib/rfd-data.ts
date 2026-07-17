@@ -2,7 +2,7 @@ export const rfds = [
   {
     number: 284,
     title: "Workers Cache in front of Worker entrypoints",
-    state: "published",
+    status: "accepted",
     author: "Dan Lapid",
     updated: "2026-07-06T18:04:00Z",
     labels: ["workers", "cache"],
@@ -10,7 +10,7 @@ export const rfds = [
   {
     number: 419,
     title: "Saga-style rollbacks for Cloudflare Workflows",
-    state: "published",
+    status: "accepted",
     author: "Vaishnav Kavitha",
     updated: "2026-06-25T09:48:00Z",
     labels: ["workflows", "durable-execution"],
@@ -18,7 +18,7 @@ export const rfds = [
   {
     number: 3,
     title: "Temporary Cloudflare accounts for AI agents",
-    state: "published",
+    status: "accepted",
     author: "Sid Chatterjee",
     updated: "2026-06-19T08:51:00Z",
     labels: ["agents", "workers"],
@@ -26,7 +26,7 @@ export const rfds = [
   {
     number: 38,
     title: "Precursor continuous signals for agentic bot detection",
-    state: "published",
+    status: "accepted",
     author: "Marina Elmore",
     updated: "2026-07-13T20:53:00Z",
     labels: ["bot-management", "security"],
@@ -34,7 +34,7 @@ export const rfds = [
   {
     number: 502,
     title: "Region-aware Smart Tiered Cache selection",
-    state: "discussion",
+    status: "discussion",
     author: "Chenxi Zhang",
     updated: "2026-07-10T14:12:00Z",
     labels: ["cache", "performance"],
@@ -42,7 +42,7 @@ export const rfds = [
   {
     number: 197,
     title: "Meerkat as a globally consistent Durable Objects primitive",
-    state: "committed",
+    status: "accepted",
     author: "James Larisch",
     updated: "2026-07-08T11:36:00Z",
     labels: ["durable-objects", "consensus"],
@@ -50,7 +50,7 @@ export const rfds = [
   {
     number: 421,
     title: "Per-tool pricing for remote MCP servers with x402",
-    state: "draft",
+    status: "draft",
     author: "Rohin Lohe",
     updated: "2026-07-01T16:20:00Z",
     labels: ["mcp", "monetization"],
@@ -58,7 +58,7 @@ export const rfds = [
   {
     number: 156,
     title: "Fine-grained controls for search, agent, and training bots",
-    state: "published",
+    status: "accepted",
     author: "Jin-Hee Lee",
     updated: "2026-07-01T07:05:00Z",
     labels: ["ai", "bot-management"],
@@ -66,7 +66,7 @@ export const rfds = [
   {
     number: 88,
     title: "Automatic semantic caching in AI Gateway",
-    state: "abandoned",
+    status: "rejected",
     author: "Priya Anand",
     updated: "2026-06-28T22:41:00Z",
     labels: ["ai-gateway", "cache"],
@@ -74,7 +74,7 @@ export const rfds = [
   {
     number: 310,
     title: "Attribution insights for AI crawler traffic",
-    state: "discussion",
+    status: "discussion",
     author: "Oliver Payne",
     updated: "2026-07-01T13:58:00Z",
     labels: ["analytics", "ai"],
@@ -82,7 +82,7 @@ export const rfds = [
   {
     number: 245,
     title: "Self-managed OAuth for every Cloudflare application",
-    state: "published",
+    status: "accepted",
     author: "Sam Cabell",
     updated: "2026-06-24T10:02:00Z",
     labels: ["oauth", "developer-platform"],
@@ -90,7 +90,7 @@ export const rfds = [
   {
     number: 401,
     title: "Zero-copy pipelines from Queues into R2 Data Catalog",
-    state: "draft",
+    status: "draft",
     author: "Elena Rossi",
     updated: "2026-06-20T18:47:00Z",
     labels: ["queues", "r2"],
@@ -98,7 +98,7 @@ export const rfds = [
   {
     number: 63,
     title: "EDE 33 visibility for DNSSEC validation bypasses",
-    state: "committed",
+    status: "accepted",
     author: "Sebastiaan Neuteboom",
     updated: "2026-07-14T09:19:00Z",
     labels: ["dns", "security"],
@@ -106,7 +106,7 @@ export const rfds = [
   {
     number: 178,
     title: "Post-quantum signatures at the Workers edge",
-    state: "published",
+    status: "accepted",
     author: "Bas Westerbaan",
     updated: "2026-07-09T15:33:00Z",
     labels: ["cryptography", "workers"],
@@ -114,7 +114,7 @@ export const rfds = [
   {
     number: 466,
     title: "D1 change streams delivered through Cloudflare Queues",
-    state: "discussion",
+    status: "discussion",
     author: "Dana Lin",
     updated: "2026-06-16T12:11:00Z",
     labels: ["d1", "queues"],

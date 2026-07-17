@@ -8,7 +8,7 @@ import * as RpcClient from "effect/unstable/rpc/RpcClient";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 
 import { ApplicationRpc } from "./contracts";
-import { SessionUnavailable } from "@crdt-rfd/domain";
+import { SessionUnavailable, type RfdStatus } from "@crdt-rfd/domain";
 import { authClient } from "../lib/auth-client";
 
 const RpcProtocolLive = RpcClient.layerProtocolHttp({ url: "/api/rpc" }).pipe(
@@ -33,7 +33,7 @@ export const sessionAtom = ApplicationRpcClient.query("session_getCurrent", unde
 });
 
 export const searchDialogOpenAtom = Atom.make(false);
-export const selectedStatesAtom = Atom.make(new Set<string>());
+export const selectedStatusesAtom = Atom.make(new Set<RfdStatus>());
 export const selectedAuthorsAtom = Atom.make(new Set<string>());
 export const selectedLabelsAtom = Atom.make(new Set<string>());
 export const sortDescendingAtom = Atom.make(true);
@@ -52,12 +52,12 @@ export const availableLabelsAtom = Atom.make((get) =>
 );
 
 export const filteredRfdsAtom = Atom.make((get) => {
-  const states = get(selectedStatesAtom);
+  const statuses = get(selectedStatusesAtom);
   const authors = get(selectedAuthorsAtom);
   const labels = get(selectedLabelsAtom);
 
   return [...get(catalogItemsAtom)]
-    .filter((rfd) => states.size === 0 || states.has(rfd.state))
+    .filter((rfd) => statuses.size === 0 || statuses.has(rfd.status))
     .filter((rfd) => authors.size === 0 || authors.has(rfd.author))
     .filter((rfd) => labels.size === 0 || rfd.labels.some((label) => labels.has(label)))
     .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
@@ -70,7 +70,7 @@ export const sortedRfdsAtom = Atom.make((get) => {
 
 export const activeFilterCountAtom = Atom.make(
   (get) =>
-    get(selectedStatesAtom).size + get(selectedAuthorsAtom).size + get(selectedLabelsAtom).size,
+    get(selectedStatusesAtom).size + get(selectedAuthorsAtom).size + get(selectedLabelsAtom).size,
 );
 
 export const signOutAtom = Atom.fn<void>()((_input, get) =>

@@ -11,12 +11,15 @@ import { SessionService } from "./session";
 
 export const getInitialApplicationState = createServerFn({ method: "GET" }).handler(async () => {
   const headers = getRequestHeaders();
-  const [catalogExit, sessionExit] = await Promise.all([
-    applicationRuntime.runPromiseExit(Effect.flatMap(RfdCatalog, (catalog) => catalog.list)),
-    applicationRuntime.runPromiseExit(
-      Effect.flatMap(SessionService, (sessions) => sessions.getCurrent(headers)),
+  const [catalogExit, sessionExit] = await applicationRuntime.runPromise(
+    Effect.all(
+      [
+        Effect.exit(Effect.flatMap(RfdCatalog, (catalog) => catalog.list())),
+        Effect.exit(Effect.flatMap(SessionService, (sessions) => sessions.getCurrent(headers))),
+      ],
+      { concurrency: "unbounded" },
     ),
-  ]);
+  );
 
   return [
     dehydrateAtom(catalogAtom, AsyncResult.fromExit(catalogExit)),

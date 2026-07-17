@@ -1,21 +1,20 @@
 import { Schema } from "effect";
+import { RfdStatus } from "./contracts.ts";
 import { RfdNumber, UserId } from "./values.ts";
 
-export const RfdState = Schema.Literals([
-  "published",
-  "discussion",
-  "draft",
-  "committed",
-  "abandoned",
-]);
-export type RfdState = typeof RfdState.Type;
+const IsoTimestamp = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/),
+  Schema.makeFilter((value) => !Number.isNaN(Date.parse(value)), {
+    expected: "a valid ISO 8601 timestamp with an explicit timezone",
+  }),
+);
 
 export const RfdSummary = Schema.Struct({
   number: RfdNumber,
   title: Schema.String,
-  state: RfdState,
+  status: RfdStatus,
   author: Schema.String,
-  updated: Schema.String,
+  updated: IsoTimestamp,
   labels: Schema.Array(Schema.String),
 });
 export type RfdSummary = typeof RfdSummary.Type;

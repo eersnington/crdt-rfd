@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { Effect } from "effect";
+import { RfdId, UserId, WorkspaceId } from "@crdt-rfd/domain";
+import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { d1MembershipStore } from "../../../src/server/d1/adapters.ts";
 
@@ -29,14 +30,16 @@ const membership = {
   updated_at: 2,
 };
 
+const input = {
+  userId: Schema.decodeUnknownSync(UserId)("u1"),
+  workspaceId: Schema.decodeUnknownSync(WorkspaceId)("w1"),
+  rfdId: Schema.decodeUnknownSync(RfdId)("r1"),
+};
+
 describe("D1 membership store", () => {
   it("decodes workspace and membership rows before authorizing", async () => {
     const result = await Effect.runPromise(
-      d1MembershipStore(databaseFor(workspace, membership)).load({
-        userId: "u1",
-        workspaceId: "w1",
-        rfdId: "r1",
-      }),
+      d1MembershipStore(databaseFor(workspace, membership)).load(input),
     );
     expect(result).toEqual({
       workspaceOwner: true,
@@ -48,17 +51,14 @@ describe("D1 membership store", () => {
   it("maps malformed D1 rows to MembershipStoreError", async () => {
     const error = await Effect.runPromise(
       d1MembershipStore(databaseFor(workspace, { ...membership, role: "owner" }))
-        .load({
-          userId: "u1",
-          workspaceId: "w1",
-          rfdId: "r1",
-        })
+        .load(input)
         .pipe(Effect.flip),
     );
     expect(error).toMatchObject({
       _tag: "MembershipStoreError",
       operation: "load",
-      message: expect.stringContaining("Invalid rfd_memberships row"),
+      message:
+        "D1 could not load valid authorization memberships. Check the database query and stored row shape.",
     });
   });
 });

@@ -3,7 +3,7 @@ import {
   SessionUnavailable,
   type CurrentSession as CurrentSessionValue,
 } from "@crdt-rfd/domain";
-import { Context, Effect, SchemaParser } from "effect";
+import { Context, Effect, Schema } from "effect";
 
 export interface SessionServiceShape {
   readonly getCurrent: (
@@ -29,7 +29,7 @@ export interface AuthSessionValue {
 export const makeSessionService = (
   loadSession: (headers: globalThis.Headers) => Promise<AuthSessionValue | null>,
 ): SessionServiceShape => ({
-  getCurrent: (headers) =>
+  getCurrent: Effect.fn("SessionService.getCurrent")((headers: globalThis.Headers) =>
     Effect.tryPromise({
       try: () => loadSession(headers),
       catch: (cause) => cause,
@@ -44,7 +44,7 @@ export const makeSessionService = (
       ),
       Effect.flatMap((session) => {
         if (session === null) return Effect.succeed(null);
-        return SchemaParser.decodeUnknownEffect(CurrentSession)({
+        return Schema.decodeUnknownEffect(CurrentSession)({
           user: {
             id: session.user.id,
             name: session.user.name,
@@ -65,4 +65,5 @@ export const makeSessionService = (
         );
       }),
     ),
+  ),
 });

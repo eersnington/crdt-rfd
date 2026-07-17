@@ -28,7 +28,6 @@ dist-ssr
 # AI agent worktrees
 .claude/worktrees/
 
-
 # Env files
 .env*
 !.env.example

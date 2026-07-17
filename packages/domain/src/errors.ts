@@ -1,23 +1,28 @@
-import { Data } from "effect";
+import { Schema } from "effect";
 
-export class ValidationError extends Data.TaggedError("ValidationError")<{
-  readonly message: string;
-  readonly issues?: readonly string[];
-}> {}
-export class AuthorizationError extends Data.TaggedError("AuthorizationError")<{
-  readonly message: string;
-}> {}
-export class NotFoundError extends Data.TaggedError("NotFoundError")<{
-  readonly entity: string;
-  readonly identifier: string;
-}> {}
-export class ConflictError extends Data.TaggedError("ConflictError")<{
-  readonly operation: string;
-  readonly message: string;
-}> {}
-export class ProviderError extends Data.TaggedError("ProviderError")<{
-  readonly provider: string;
-  readonly operation: string;
-  readonly message: string;
-  readonly retryable: boolean;
-}> {}
+export class ValidationError extends Schema.TaggedErrorClass<ValidationError>()("ValidationError", {
+  message: Schema.String,
+  issues: Schema.optionalKey(Schema.Array(Schema.String)),
+}) {}
+
+export class AuthorizationError extends Schema.TaggedErrorClass<AuthorizationError>()(
+  "AuthorizationError",
+  { message: Schema.String },
+) {}
+
+export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("NotFoundError", {
+  entity: Schema.String,
+  identifier: Schema.String,
+}) {}
+
+export class ConflictError extends Schema.TaggedErrorClass<ConflictError>()("ConflictError", {
+  operation: Schema.String,
+  message: Schema.String,
+}) {}
+
+export class ProviderError extends Schema.TaggedErrorClass<ProviderError>()("ProviderError", {
+  provider: Schema.String,
+  operation: Schema.String,
+  message: Schema.String,
+  retryable: Schema.Boolean,
+}) {}
