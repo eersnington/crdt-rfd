@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun alchemy dev --profile crdt-rfd",
-    "deploy": "bun alchemy deploy --profile crdt-rfd",
-    "destroy": "bun alchemy destroy --profile crdt-rfd",
-    "plan": "bun alchemy deploy --profile crdt-rfd --dry-run",
+    "dev": "bun alchemy dev --profile crdt-rfd --env-file ../../apps/web/.env",
+    "deploy": "bun alchemy deploy --profile crdt-rfd --env-file ../../apps/web/.env.production",
+    "destroy": "bun alchemy destroy --profile crdt-rfd --env-file ../../apps/web/.env.production",
+    "plan": "bun alchemy deploy --profile crdt-rfd --env-file ../../apps/web/.env.production --dry-run",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

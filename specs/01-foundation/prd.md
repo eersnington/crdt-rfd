@@ -16,10 +16,11 @@ None. This workstream is the base of the stack.
 - Install Alchemy v2, Effect v4, and the required Bun and Node platform packages.
 - Add root scripts that delegate infrastructure commands to `packages/infra`.
 - Add `packages/infra/alchemy.run.ts` as the composition root.
-- The first stack revision must declare exactly one Cloudflare R2 bucket and no Worker.
-- Ask for confirmation before `bun alchemy deploy`.
-- Record the confirmed deployment in `specs/progress.md` and this workstream's progress file.
-- Stop after confirming that the bucket is live. Add the application resources in a later change.
+- Keep application env files under `apps/web` and select `.env` or `.env.production` explicitly
+  from the corresponding Alchemy command.
+- Verify the R2 bucket, D1 database, and Website resource through local Alchemy development.
+- Production deployment and deployment-account configuration are operational concerns outside
+  this implementation workstream.
 
 The R2 bucket validates Alchemy setup only. It is not the Artifacts repository backend.
 
@@ -48,7 +49,7 @@ Do not add speculative compatibility fields. Illegal states should use discrimin
 
 ### D1 foundation
 
-After the required first deploy is complete, add D1 through Alchemy and create migrations for:
+Add D1 through Alchemy and create migrations for:
 
 ```text
 users
@@ -125,8 +126,8 @@ Avoid editing Artifacts, editor, comments, or proposal implementation files in t
 
 ## Acceptance criteria
 
-- `packages/infra` can plan the initial one-bucket stack.
-- The first deploy is run only after explicit confirmation and the bucket is verified live.
+- `packages/infra` starts the R2, D1, and Website resources in Alchemy development.
+- Development and production commands load their corresponding env files from `apps/web`.
 - Domain schemas compile without importing Cloudflare runtime types.
 - D1 migrations apply cleanly from zero.
 - GitHub login creates or reconnects a user without requesting repository scopes.

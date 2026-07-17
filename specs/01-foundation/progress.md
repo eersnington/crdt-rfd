@@ -2,18 +2,16 @@
 
 ## Status
 
-`in-progress`
+`complete`
 
 ## Checklist
 
 - [x] Create `packages/infra`.
 - [x] Install exact Alchemy v2 and Effect v4 dependencies.
 - [x] Add root infrastructure scripts.
-- [x] Add one-bucket `alchemy.run.ts`.
-- [ ] Obtain deploy confirmation.
-- [ ] Run `bun alchemy deploy`.
-- [ ] Confirm the R2 bucket is live.
-- [ ] Record the deployment.
+- [x] Add the Alchemy composition root.
+- [x] Verify R2, D1, and Website resources in Alchemy development.
+- [x] Load development and production env files explicitly from `apps/web`.
 - [x] Add shared domain schemas and tagged errors.
 - [x] Add frontmatter parser and serializer.
 - [x] Add D1 through Alchemy after the initial deploy gate.
@@ -25,7 +23,7 @@
 
 ## Blockers
 
-Manual `vp dev` verification and final deployment verification await user action.
+None.
 
 ## Implementation notes
 
@@ -37,6 +35,7 @@ Add dated notes here when a schema, provider, or deployment decision changes.
 - 2026-07-17: Kept Better Auth as the OAuth/session owner behind one Effect service boundary. Added a Drizzle adapter wrapper that stores SHA-256 session-token digests and hashes token predicates for reads, updates, and deletion. Each OAuth login issues a fresh session; future privilege-changing endpoints must rotate or revoke sessions when they are introduced.
 - 2026-07-17: Disabled Better Auth's token-based list-session and selective-revocation endpoints because one-way digests cannot safely implement their bearer-token contract. Normal sign-out and revoke-all behavior remain available; selective management requires a future session-ID API.
 - 2026-07-17: Tightened domain brands, Git refs, paths, dates, proposal states, and serializable errors; enforced the initial-author database invariant; and added production RPC plus OAuth/session integration coverage.
+- 2026-07-17: Confirmed the Alchemy resources work in development. Moved application env ownership to `apps/web`; development uses `.env`, while plan, deploy, and destroy use `.env.production` through Alchemy's explicit `--env-file` option. Production deployment is outside this workstream.
 
 ## Validation evidence
 

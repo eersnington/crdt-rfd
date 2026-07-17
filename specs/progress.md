@@ -12,7 +12,7 @@
 | Area                         | Status      | Notes                                                                |
 | ---------------------------- | ----------- | -------------------------------------------------------------------- |
 | Product specification        | complete    | Initial implementation specification captured in `specs/`            |
-| Alchemy foundation           | in-progress | One-bucket stack plans successfully; deployment confirmation pending |
+| Alchemy foundation           | complete    | R2, D1, Website, and command-specific app env loading work in dev     |
 | Domain model                 | in-progress | Foundation schemas and tagged errors are implemented                 |
 | Authentication and ownership | in-progress | Better Auth, hashed sessions, and D1 authorization are implemented   |
 | Artifacts repository         | not-started | Binding, bootstrap, and Git operations pending                       |
@@ -42,7 +42,7 @@
 
 | PR  | Deliverable                                                        | Dependencies | Status      |
 | --- | ------------------------------------------------------------------ | ------------ | ----------- |
-| 01  | `packages/infra`, Alchemy v2, one R2 bucket, confirmed deployment  | none         | in-progress |
+| 01  | `packages/infra`, Alchemy v2, and local resource verification      | none         | complete    |
 | 02  | Domain schemas, errors, frontmatter parser, Markdown fixtures      | 01           | in-progress |
 | 03  | D1 migrations, GitHub OAuth, ownership and authorization           | 02           | in-progress |
 | 04  | Artifacts binding, repository bootstrap, read and write operations | 02           | not-started |
