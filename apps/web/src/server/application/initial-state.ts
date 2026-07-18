@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 
 import { dehydrateAtom } from "@/lib/atom-hydration";
-import { catalogAtom, sessionAtom } from "@/rpc/client";
+import { catalogHydrationAtom, sessionAtom } from "@/rpc/client";
 import { RfdCatalog } from "./catalog";
 import { applicationRuntime } from "./runtime";
 import { SessionService } from "./session";
@@ -22,7 +22,7 @@ export const getInitialApplicationState = createServerFn({ method: "GET" }).hand
   );
 
   return [
-    dehydrateAtom(catalogAtom, AsyncResult.fromExit(catalogExit)),
+    dehydrateAtom(catalogHydrationAtom, AsyncResult.fromExit(catalogExit)),
     dehydrateAtom(sessionAtom, AsyncResult.fromExit(sessionExit)),
   ];
 });

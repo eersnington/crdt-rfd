@@ -8,7 +8,7 @@ import * as RpcClient from "effect/unstable/rpc/RpcClient";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 
 import { ApplicationRpc } from "./contracts";
-import { SessionUnavailable, type RfdStatus } from "@crdt-rfd/domain";
+import { SessionUnavailable, type RfdId, type RfdStatus } from "@crdt-rfd/domain";
 import { authClient } from "../lib/auth-client";
 
 const RpcProtocolLive = RpcClient.layerProtocolHttp({ url: "/api/rpc" }).pipe(
@@ -24,9 +24,17 @@ export class ApplicationRpcClient extends AtomRpc.Service<ApplicationRpcClient>(
   },
 ) {}
 
-export const catalogAtom = ApplicationRpcClient.query("catalog_list", undefined, {
+export const catalogHydrationAtom = ApplicationRpcClient.query("catalog_list", undefined, {
   serializationKey: "all",
 });
+
+export const catalogAtom = Atom.withReactivity(["catalog"])(catalogHydrationAtom);
+
+export const createRfdAtom = ApplicationRpcClient.mutation("rfd_create");
+
+export const rfdDocumentAtom = Atom.family((rfdId: RfdId) =>
+  ApplicationRpcClient.query("rfd_get", { rfdId }, { serializationKey: rfdId }),
+);
 
 export const sessionAtom = ApplicationRpcClient.query("session_getCurrent", undefined, {
   serializationKey: "current",

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { RfdStatus } from "./contracts.ts";
-import { RfdNumber, UserId } from "./values.ts";
+import { CommitSha, RfdId, RfdNumber, UserId } from "./values.ts";
 
 const IsoTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/),
@@ -10,6 +10,7 @@ const IsoTimestamp = Schema.String.check(
 );
 
 export const RfdSummary = Schema.Struct({
+  rfdId: RfdId,
   number: RfdNumber,
   title: Schema.String,
   status: RfdStatus,
@@ -20,6 +21,26 @@ export const RfdSummary = Schema.Struct({
 export type RfdSummary = typeof RfdSummary.Type;
 
 export const RfdSummaries = Schema.Array(RfdSummary);
+
+export const CreateRfdInput = Schema.Struct({
+  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+});
+export type CreateRfdInput = typeof CreateRfdInput.Type;
+
+export const CommittedRfdDocument = Schema.Struct({
+  rfdId: RfdId,
+  number: RfdNumber,
+  title: Schema.String,
+  status: RfdStatus,
+  author: Schema.String,
+  updated: IsoTimestamp,
+  body: Schema.String,
+  headSha: CommitSha,
+});
+export type CommittedRfdDocument = typeof CommittedRfdDocument.Type;
+
+export const GetRfdInput = Schema.Struct({ rfdId: RfdId });
+export type GetRfdInput = typeof GetRfdInput.Type;
 
 export const CurrentUser = Schema.Struct({
   id: UserId,
@@ -50,4 +71,17 @@ export class SessionUnavailable extends Schema.TaggedErrorClass<SessionUnavailab
     operation: Schema.String,
     message: Schema.String,
   },
+) {}
+
+export class RfdOperationFailed extends Schema.TaggedErrorClass<RfdOperationFailed>()(
+  "RfdOperationFailed",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+export class AuthenticationRequired extends Schema.TaggedErrorClass<AuthenticationRequired>()(
+  "AuthenticationRequired",
+  { message: Schema.String },
 ) {}

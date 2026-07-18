@@ -1,6 +1,7 @@
 import { ArrowsDownUpIcon, MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 import type { RfdStatus } from "@crdt-rfd/domain";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
+import { Link } from "@tanstack/react-router";
 
 import { statusDotClass, useRfdSearch } from "@/components/rfd-search";
 import { statusLabels } from "@/lib/rfd-presentation";
@@ -114,8 +115,9 @@ export function RfdExplorer() {
         <ul className="flex flex-col">
           {sorted.map((rfd) => (
             <li key={rfd.number} id={`rfd-${rfd.number}`} className="scroll-mt-24">
-              <a
-                href={`#rfd-${rfd.number}`}
+              <Link
+                to="/rfd/$rfdId"
+                params={{ rfdId: rfd.rfdId }}
                 className="group grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-2 border-b py-5 hover:bg-secondary/10"
               >
                 <div className="flex flex-col gap-2">
@@ -146,7 +148,7 @@ export function RfdExplorer() {
                 <time className="font-mono text-xs tabular-nums text-muted-foreground sm:text-right">
                   {dateFormat.format(new Date(rfd.updated))}
                 </time>
-              </a>
+              </Link>
             </li>
           ))}
         </ul>

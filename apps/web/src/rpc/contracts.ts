@@ -1,6 +1,11 @@
 import {
   CatalogUnavailable,
+  CommittedRfdDocument,
+  CreateRfdInput,
+  GetRfdInput,
   OptionalCurrentSession,
+  RfdOperationFailed,
+  RfdSummary,
   RfdSummaries,
   SessionUnavailable,
 } from "@crdt-rfd/domain";
@@ -15,4 +20,12 @@ export const SessionRpc = RpcGroup.make(
   Rpc.make("getCurrent").setSuccess(OptionalCurrentSession).setError(SessionUnavailable),
 ).prefix("session_");
 
-export const ApplicationRpc = RpcGroup.make().merge(CatalogRpc, SessionRpc);
+export const RfdRpc = RpcGroup.make(
+  Rpc.make("create").setPayload(CreateRfdInput).setSuccess(RfdSummary).setError(RfdOperationFailed),
+  Rpc.make("get")
+    .setPayload(GetRfdInput)
+    .setSuccess(CommittedRfdDocument)
+    .setError(RfdOperationFailed),
+).prefix("rfd_");
+
+export const ApplicationRpc = RpcGroup.make().merge(CatalogRpc, SessionRpc, RfdRpc);

@@ -10,6 +10,10 @@ export const RfdDatabase = Cloudflare.D1.Database("RfdDatabase", {
 
 export const RfdBucket = Cloudflare.R2.Bucket("RfdBucket");
 
+export const RfdArtifacts = Cloudflare.Artifacts.Namespace("ARTIFACTS", {
+  namespace: "crdt-rfd",
+});
+
 const AppOrigin = Config.schema(Schema.URLFromString, "APP_ORIGIN");
 
 export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
@@ -28,6 +32,7 @@ export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
   },
   env: {
     DB: RfdDatabase,
+    ARTIFACTS: RfdArtifacts,
     GITHUB_CLIENT_ID: Config.string("GITHUB_CLIENT_ID"),
     GITHUB_CLIENT_SECRET: Config.redacted("GITHUB_CLIENT_SECRET"),
     APP_ORIGIN: AppOrigin.pipe(Config.map((url) => url.origin)),
@@ -46,9 +51,11 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const bucket = yield* RfdBucket;
     const database = yield* RfdDatabase;
+    const artifacts = yield* RfdArtifacts;
     const website = yield* Website;
 
     return {
+      artifactsNamespace: artifacts.namespace,
       bucketName: bucket.bucketName,
       databaseName: database.databaseName,
       websiteUrl: website.url.as<string>(),
