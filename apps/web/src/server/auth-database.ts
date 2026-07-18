@@ -107,13 +107,20 @@ export const withHashedSessionTokens = (base: DBAdapter): DBAdapter => {
       }),
     update: async <T>(input: Parameters<DBAdapter["update"]>[0]): Promise<T | null> => {
       const tokens = await rawTokenByDigest(input.model, input.where);
+      const updatedToken =
+        input.model === "session" && typeof input.update.token === "string"
+          ? input.update.token
+          : undefined;
+      const updatedDigest =
+        updatedToken === undefined ? undefined : await hashSessionToken(updatedToken);
+      if (updatedToken !== undefined && updatedDigest !== undefined) {
+        tokens.set(updatedDigest, updatedToken);
+      }
       const row = await base.update<T>({
         ...input,
         where: await hashSessionWhere(input.model, input.where),
         update:
-          input.model === "session" && typeof input.update.token === "string"
-            ? { ...input.update, token: await hashSessionToken(input.update.token) }
-            : input.update,
+          updatedDigest !== undefined ? { ...input.update, token: updatedDigest } : input.update,
       });
       return restoreSessionToken(row, tokens);
     },

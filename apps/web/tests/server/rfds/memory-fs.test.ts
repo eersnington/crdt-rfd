@@ -21,4 +21,16 @@ describe("MemoryFS", () => {
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
     expect(await git.resolveRef({ fs, dir, ref: "HEAD" })).toBe(sha);
   });
+
+  it("rejects operations that would corrupt directory entries", async () => {
+    const fs = new MemoryFS();
+    await fs.promises.mkdir("/workspace", { recursive: true });
+    await fs.promises.writeFile("/workspace/rfd.md", "# RFD\n");
+
+    await expect(fs.promises.mkdir("/workspace/rfd.md")).rejects.toMatchObject({ code: "EEXIST" });
+    await expect(fs.promises.writeFile("/workspace", "invalid")).rejects.toMatchObject({
+      code: "EISDIR",
+    });
+    await expect(fs.promises.rmdir("/")).rejects.toMatchObject({ code: "EBUSY" });
+  });
 });

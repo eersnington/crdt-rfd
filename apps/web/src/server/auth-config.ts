@@ -34,7 +34,10 @@ export const createAuth = (
     },
     onAPIError: {
       onError: (error) => {
-        console.error("Better Auth request failed", error);
+        console.error("Better Auth request failed", {
+          name: error instanceof Error ? error.name : "UnknownError",
+          message: error instanceof Error ? error.message : "Unknown authentication failure",
+        });
       },
     },
     plugins: [tanstackStartCookies()],

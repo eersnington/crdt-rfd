@@ -5,6 +5,7 @@ import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
 import { ApplicationRpc } from "../../rpc/contracts";
 import { ApplicationRpcLive } from "./rpc-handlers";
+import { ApplicationLive } from "./layers";
 
 const RpcServerLive = RpcServer.layerHttp({
   group: ApplicationRpc,
@@ -12,7 +13,10 @@ const RpcServerLive = RpcServer.layerHttp({
   protocol: "http",
   spanPrefix: "rfd.rpc",
   disableFatalDefects: true,
-}).pipe(Layer.provide(ApplicationRpcLive), Layer.provide(RpcSerialization.layerNdjson));
+}).pipe(
+  Layer.provide(ApplicationRpcLive.pipe(Layer.provide(ApplicationLive))),
+  Layer.provide(RpcSerialization.layerNdjson),
+);
 
 const HttpLive = Layer.provideMerge(RpcServerLive, HttpRouter.layer);
 

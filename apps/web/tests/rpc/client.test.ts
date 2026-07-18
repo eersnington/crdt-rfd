@@ -26,6 +26,7 @@ vi.mock("cloudflare:workers", () => ({
                 artifact_repo_name: "rfd-test-rfd",
                 artifact_remote: "https://example.invalid/rfd-test-rfd.git",
                 head_sha: "0123456789012345678901234567890123456789",
+                committed_source: null,
                 owner_user_id: "test-user",
                 author: "Test User",
                 updated_at: 1_700_000_000_000,
@@ -47,6 +48,7 @@ import {
 } from "../../src/rpc/client";
 import { ApplicationRpc } from "../../src/rpc/contracts";
 import { RfdCatalog, RfdCatalogLive } from "../../src/server/application/catalog";
+import { RfdRepositoryLive } from "../../src/server/rfds/repository";
 import { rpcWebHandler } from "../../src/server/application/rpc-server";
 
 describe("RFD atoms", () => {
@@ -78,7 +80,9 @@ describe("RFD atoms", () => {
 
   it("hydrates the RPC catalog and derives filters and ordering", async () => {
     const catalog = await Effect.runPromise(
-      Effect.flatMap(RfdCatalog, (service) => service.list()).pipe(Effect.provide(RfdCatalogLive)),
+      Effect.flatMap(RfdCatalog, (service) => service.list()).pipe(
+        Effect.provide(RfdCatalogLive.pipe(Layer.provide(RfdRepositoryLive))),
+      ),
     );
     const registry = AtomRegistry.make();
 

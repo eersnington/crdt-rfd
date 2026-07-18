@@ -74,4 +74,24 @@ describe("hashed session adapter", () => {
     expect(session).toBeNull();
     expect(queries).toEqual([[{ field: "token", value: await hashSessionToken(digest) }]]);
   });
+
+  it("stores a rotated token as a digest while returning the new raw token", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const base = {
+      update: async ({ update }: { update: Record<string, unknown> }) => {
+        updates.push(update);
+        return update;
+      },
+    } as unknown as DBAdapter;
+    const adapter = withHashedSessionTokens(base);
+
+    const session = await adapter.update<{ token: string }>({
+      model: "session",
+      where: [{ field: "token", value: "old-raw-token" }],
+      update: { token: "new-raw-token" },
+    });
+
+    expect(session).toEqual({ token: "new-raw-token" });
+    expect(updates).toEqual([{ token: await hashSessionToken("new-raw-token") }]);
+  });
 });

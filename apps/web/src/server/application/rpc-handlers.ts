@@ -1,9 +1,8 @@
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { RfdOperationFailed } from "@crdt-rfd/domain";
 
 import { ApplicationRpc } from "../../rpc/contracts";
 import { RfdCatalog } from "./catalog";
-import { ApplicationLive } from "./layers";
 import { SessionService } from "./session";
 import { RfdRepository } from "../rfds/repository";
 
@@ -42,4 +41,4 @@ export const ApplicationRpcLive = ApplicationRpc.toLayer(
       session_getCurrent: (_payload, options) => sessions.getCurrent(headers(options)),
     };
   }),
-).pipe(Layer.provide(ApplicationLive));
+);

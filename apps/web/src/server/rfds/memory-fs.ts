@@ -107,7 +107,14 @@ export class MemoryFS {
       }
       await this.mkdir(parent, { recursive: true });
     }
-    if (this.entries.has(target)) return;
+    const existing = this.entries.get(target);
+    if (existing !== undefined) {
+      if (existing.kind !== "dir") throw new MemoryFSError("EEXIST", path);
+      if (typeof options !== "object" || options.recursive !== true) {
+        throw new MemoryFSError("EEXIST", path);
+      }
+      return;
+    }
     this.entries.set(target, { kind: "dir", children: new Set(), mtimeMs: Date.now() });
     this.requireDir(parent).children.add(this.basename(target));
   }
@@ -115,6 +122,7 @@ export class MemoryFS {
   async writeFile(path: string, data: string | Uint8Array | ArrayBuffer) {
     const target = this.normalize(path);
     await this.mkdir(this.parent(target), { recursive: true });
+    if (this.entries.get(target)?.kind === "dir") throw new MemoryFSError("EISDIR", path);
     const bytes =
       typeof data === "string"
         ? this.encoder.encode(data)
@@ -145,6 +153,7 @@ export class MemoryFS {
 
   async rmdir(path: string) {
     const target = this.normalize(path);
+    if (target === "/") throw new MemoryFSError("EBUSY", path);
     const entry = this.requireDir(target);
     if (entry.children.size > 0) throw new MemoryFSError("ENOTEMPTY", path);
     this.entries.delete(target);

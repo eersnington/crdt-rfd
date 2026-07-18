@@ -1,6 +1,6 @@
 import { CatalogUnavailable, type RfdSummary } from "@crdt-rfd/domain";
 import { Context, Effect, Layer } from "effect";
-import { RfdRepository, RfdRepositoryLive } from "../rfds/repository";
+import { RfdRepository } from "../rfds/repository";
 
 export interface RfdCatalogShape {
   readonly list: () => Effect.Effect<ReadonlyArray<RfdSummary>, CatalogUnavailable>;
@@ -26,4 +26,4 @@ export const RfdCatalogLive = Layer.effect(
     );
     return RfdCatalog.of({ list });
   }),
-).pipe(Layer.provide(RfdRepositoryLive));
+);
