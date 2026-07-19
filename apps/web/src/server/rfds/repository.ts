@@ -132,7 +132,7 @@ const RfdRepositoryLayer = Layer.effect(
           supersedes: [],
           related: [],
         },
-        body: `\n# ${title}\n`,
+        body: "",
       });
 
       const artifact = yield* artifacts.createRepository(repositoryName).pipe(

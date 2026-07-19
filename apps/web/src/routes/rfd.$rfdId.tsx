@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import {
+  HydrationBoundary,
   RegistryProvider,
   useAtom,
   useAtomRefresh,
@@ -17,6 +18,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { RfdReader } from "@/components/editor/rfd-reader";
 import { rfdDocumentAtom, searchDialogOpenAtom, sessionAtom, signOutAtom } from "@/rpc/client";
+import { getRfdInitialApplicationState } from "@/server/application/initial-state";
 
 const RfdCollaborativeDocument = lazy(() =>
   import("@/components/editor/rfd-editor").then((module) => ({
@@ -25,16 +27,21 @@ const RfdCollaborativeDocument = lazy(() =>
 );
 
 export const Route = createFileRoute("/rfd/$rfdId")({
+  loader: ({ params }) => getRfdInitialApplicationState({ data: { rfdId: params.rfdId } }),
   component: RfdPage,
 });
 
 function RfdPage() {
+  const state = Route.useLoaderData();
+
   return (
     <RegistryProvider defaultIdleTTL={60_000}>
-      <RfdSearchProvider>
-        <RfdPageChrome />
-        <RfdRoute />
-      </RfdSearchProvider>
+      <HydrationBoundary state={state}>
+        <RfdSearchProvider>
+          <RfdPageChrome />
+          <RfdRoute />
+        </RfdSearchProvider>
+      </HydrationBoundary>
     </RegistryProvider>
   );
 }
@@ -111,7 +118,9 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
     return (
       <main className="min-h-svh bg-background px-4 pt-28 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
         <article className="mx-auto max-w-3xl">
-          <Suspense fallback={<DocumentMessage message="Opening collaborative editor…" />}>
+          <Suspense
+            fallback={<p className="py-12 text-sm text-muted-foreground">Opening editor…</p>}
+          >
             <RfdCollaborativeDocument
               key={rfdId}
               rfdId={rfdId}
@@ -149,19 +158,24 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   return (
     <main className="min-h-svh bg-background px-4 pt-28 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
       <article className="mx-auto max-w-3xl">
-        <header className="border-b pb-8">
+        <header className="relative border-b pb-7">
           <p className="font-mono text-xs text-primary">RFD {committed.number}</p>
+          {user === undefined ? null : (
+            <Button
+              type="button"
+              size="sm"
+              className="absolute top-0 right-0"
+              onClick={() => setEditing(true)}
+            >
+              Edit
+            </Button>
+          )}
           <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
             {committed.title}
           </h1>
           <p className="mt-4 font-mono text-xs text-muted-foreground">
             {committed.author} · {committed.status} · {committed.headSha.slice(0, 8)}
           </p>
-          {user === undefined ? null : (
-            <Button type="button" className="mt-4" onClick={() => setEditing(true)}>
-              Edit
-            </Button>
-          )}
         </header>
         <RfdReader source={committed.body} />
       </article>

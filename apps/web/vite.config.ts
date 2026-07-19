@@ -13,6 +13,16 @@ const yjsRuntimePackages = [
   "@tiptap/extension-collaboration-caret",
 ];
 
+const editorRuntimePackages = [
+  ...yjsRuntimePackages,
+  "@tiptap/core",
+  "@tiptap/react",
+  "@tiptap/react/menus",
+  "@tiptap/starter-kit",
+  "@tiptap/markdown",
+  "@tiptap/extension-bubble-menu",
+];
+
 const config = defineConfig({
   lint: {
     plugins: ["import", "typescript", "unicorn"],
@@ -99,10 +109,12 @@ const config = defineConfig({
   },
   resolve: {
     tsconfigPaths: true,
-    dedupe: yjsRuntimePackages,
+    // React hooks, the renderer, and Yjs all require one module identity per runtime.
+    dedupe: ["react", "react-dom", ...yjsRuntimePackages],
   },
   // Yjs instances must be shared with Tiptap in every Vite runtime.
-  optimizeDeps: { include: yjsRuntimePackages },
+  // Pre-bundle the lazy editor too, preventing a navigation-time optimizer reload.
+  optimizeDeps: { include: editorRuntimePackages },
   ssr: { noExternal: yjsRuntimePackages },
   test: { server: { deps: { inline: yjsRuntimePackages } } },
   build: { rolldownOptions: { external: ["cloudflare:workers"] } },

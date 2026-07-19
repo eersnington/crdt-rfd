@@ -110,9 +110,7 @@ export function useRfdSearch() {
 }
 
 export function RfdSearchProvider({ children }: { children: ReactNode }) {
-  const navigate = useNavigate();
-  const { open, setOpen, filters, toggle, clear, catalogItems, authors, labels } = useRfdSearch();
-
+  const [open, setOpen] = useAtom(searchDialogOpenAtom);
   useMountEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey)) return;
@@ -124,6 +122,18 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", openSearch);
   });
 
+  return (
+    <>
+      {children}
+      {open ? <RfdSearchDialog /> : null}
+    </>
+  );
+}
+
+function RfdSearchDialog() {
+  const navigate = useNavigate();
+  const { open, setOpen, filters, toggle, clear, catalogItems, authors, labels } = useRfdSearch();
+
   const goTo = async (rfd: RfdSummary) => {
     clear();
     setOpen(false);
@@ -132,7 +142,6 @@ export function RfdSearchProvider({ children }: { children: ReactNode }) {
 
   return (
     <>
-      {children}
       <CommandDialog
         open={open}
         onOpenChange={setOpen}
