@@ -6,15 +6,18 @@ import {
   RfdStatus,
   RfdSummary,
   UserId,
+  RoomRole,
   type CommitSha as CommitShaValue,
   type RfdId as RfdIdValue,
   type RfdNumber as RfdNumberValue,
   type RfdStatus as RfdStatusValue,
   type RfdSummary as RfdSummaryValue,
   type UserId as UserIdValue,
+  type RoomRole as RoomRoleValue,
 } from "@crdt-rfd/domain";
-import { env } from "cloudflare:workers";
 import { Context, Effect, Layer, Schema } from "effect";
+
+import { cloudflareEnv } from "../env";
 
 const Timestamp = Schema.Number.check(Schema.isInt());
 const CatalogRow = Schema.Struct({
@@ -77,6 +80,11 @@ export class GithubAccountNotLinked extends Schema.TaggedErrorClass<GithubAccoun
   { userId: UserId, cause: Schema.Defect() },
 ) {}
 
+export class CatalogCheckpointConflict extends Schema.TaggedErrorClass<CatalogCheckpointConflict>()(
+  "CatalogCheckpointConflict",
+  { rfdId: RfdId, expectedHeadSha: CommitSha },
+) {}
+
 export interface RfdCatalogStoreShape {
   readonly list: () => Effect.Effect<
     ReadonlyArray<RfdSummaryValue>,
@@ -95,6 +103,19 @@ export interface RfdCatalogStoreShape {
     readonly headSha: CommitShaValue;
     readonly committedSource: string;
   }) => Effect.Effect<void, CatalogQueryFailed>;
+  readonly commitCheckpoint: (input: {
+    readonly rfdId: RfdIdValue;
+    readonly expectedHeadSha: CommitShaValue;
+    readonly nextHeadSha: CommitShaValue;
+    readonly title: string;
+    readonly status: RfdStatusValue;
+    readonly committedSource: string;
+    readonly timestamp: number;
+  }) => Effect.Effect<void, CatalogQueryFailed | CatalogCheckpointConflict>;
+  readonly getRoomRole: (
+    rfdId: RfdIdValue,
+    userId: UserIdValue,
+  ) => Effect.Effect<RoomRoleValue | null, CatalogQueryFailed | InvalidCatalogRecord>;
 }
 
 export class RfdCatalogStore extends Context.Service<RfdCatalogStore, RfdCatalogStoreShape>()(
@@ -195,27 +216,34 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
     );
   }),
   insert: Effect.fn("RfdCatalogStore.insert")((record) =>
-    query("insert catalog record", () =>
-      database
-        .prepare(
-          `INSERT INTO rfd_catalog
+    query("insert catalog record and owner membership", () =>
+      database.batch([
+        database
+          .prepare(
+            `INSERT INTO rfd_catalog
            (rfd_id, number, title, status, artifact_repo_name, artifact_remote, head_sha,
             committed_source, owner_user_id, created_at, updated_at)
            VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          record.rfdId,
-          record.number,
-          record.title,
-          record.artifactRepoName,
-          record.artifactRemote,
-          record.headSha,
-          record.committedSource,
-          record.ownerUserId,
-          record.timestamp,
-          record.timestamp,
-        )
-        .run(),
+          )
+          .bind(
+            record.rfdId,
+            record.number,
+            record.title,
+            record.artifactRepoName,
+            record.artifactRemote,
+            record.headSha,
+            record.committedSource,
+            record.ownerUserId,
+            record.timestamp,
+            record.timestamp,
+          ),
+        database
+          .prepare(
+            `INSERT INTO rfd_membership_v2 (rfd_id, user_id, role, created_at, updated_at)
+             VALUES (?, ?, 'owner', ?, ?)`,
+          )
+          .bind(record.rfdId, record.ownerUserId, record.timestamp, record.timestamp),
+      ]),
     ).pipe(Effect.asVoid),
   ),
   cacheCommittedSource: Effect.fn("RfdCatalogStore.cacheCommittedSource")((input) =>
@@ -226,8 +254,49 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
         .run(),
     ).pipe(Effect.asVoid),
   ),
+  commitCheckpoint: Effect.fn("RfdCatalogStore.commitCheckpoint")(function* (input) {
+    const result = yield* query("commit RFD checkpoint", () =>
+      database
+        .prepare(
+          `UPDATE rfd_catalog
+           SET title = ?, status = ?, head_sha = ?, committed_source = ?, updated_at = ?
+           WHERE rfd_id = ? AND head_sha = ?`,
+        )
+        .bind(
+          input.title,
+          input.status,
+          input.nextHeadSha,
+          input.committedSource,
+          input.timestamp,
+          input.rfdId,
+          input.expectedHeadSha,
+        )
+        .run(),
+    );
+    if (result.meta.changes !== 1) {
+      return yield* new CatalogCheckpointConflict({
+        rfdId: input.rfdId,
+        expectedHeadSha: input.expectedHeadSha,
+      });
+    }
+  }),
+  getRoomRole: Effect.fn("RfdCatalogStore.getRoomRole")(function* (rfdId, userId) {
+    const row = yield* query("get RFD room role", () =>
+      database
+        .prepare("SELECT role FROM rfd_membership_v2 WHERE rfd_id = ? AND user_id = ?")
+        .bind(rfdId, userId)
+        .first(),
+    );
+    if (row === null) return null;
+    return yield* Schema.decodeUnknownEffect(Schema.Struct({ role: RoomRole }))(row).pipe(
+      Effect.map((decoded) => decoded.role),
+      Effect.mapError((cause) => new InvalidCatalogRecord({ query: "get RFD room role", cause })),
+    );
+  }),
 });
 
-export const RfdCatalogStoreLive = Layer.sync(RfdCatalogStore, () => makeRfdCatalogStore(env.DB));
+export const RfdCatalogStoreLive = Layer.sync(RfdCatalogStore, () =>
+  makeRfdCatalogStore(cloudflareEnv.DB),
+);
 
 export type { CatalogRecord, InsertCatalogRecord };

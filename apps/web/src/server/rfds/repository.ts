@@ -1,15 +1,22 @@
 import {
   CommittedRfdDocument,
+  CheckpointConflict,
+  CheckpointFailed,
   RfdId,
   RfdOperationFailed,
   RfdSummary,
   UserId,
   parseRfdDocument,
+  canTransitionRfdStatus,
   serializeRfdDocument,
   type CommittedRfdDocument as CommittedRfdDocumentValue,
+  type CheckpointResult as CheckpointResultValue,
+  type CheckpointRfdInput,
+  type CommitSha,
   type CreateRfdInput,
   type CurrentUser,
   type RfdId as RfdIdValue,
+  type RoomRole,
   type RfdSummary as RfdSummaryValue,
 } from "@crdt-rfd/domain";
 import { Clock, Context, Effect, Layer, Schema } from "effect";
@@ -25,6 +32,17 @@ export interface RfdRepositoryShape {
     user: CurrentUser,
   ) => Effect.Effect<RfdSummaryValue, RfdOperationFailed>;
   readonly get: (rfdId: RfdIdValue) => Effect.Effect<CommittedRfdDocumentValue, RfdOperationFailed>;
+  readonly checkpoint: (
+    input: CheckpointRfdInput,
+    user: CurrentUser,
+  ) => Effect.Effect<CheckpointResultValue, CheckpointConflict | CheckpointFailed>;
+  readonly loadCommittedSource: (
+    rfdId: RfdIdValue,
+  ) => Effect.Effect<{ readonly source: string; readonly headSha: CommitSha }, RfdOperationFailed>;
+  readonly getRoomRole: (
+    rfdId: RfdIdValue,
+    userId: typeof UserId.Type,
+  ) => Effect.Effect<RoomRole | null, RfdOperationFailed>;
 }
 
 export class RfdRepository extends Context.Service<RfdRepository, RfdRepositoryShape>()(
@@ -240,7 +258,162 @@ const RfdRepositoryLayer = Layer.effect(
       );
     });
 
-    return RfdRepository.of({ list, create, get });
+    const loadCommittedSource = Effect.fn("RfdRepository.loadCommittedSource")(function* (
+      rfdId: RfdIdValue,
+    ) {
+      const record = yield* catalog
+        .getRecord(rfdId)
+        .pipe(
+          Effect.mapError(() =>
+            failed("load committed RFD", "The RFD catalog could not be loaded."),
+          ),
+        );
+      if (record === null)
+        return yield* failed("load committed RFD", `RFD ${rfdId} was not found.`);
+      if (record.committedSource !== null) {
+        return { source: record.committedSource, headSha: record.headSha };
+      }
+      const token = yield* artifacts
+        .createToken(record.artifactRepoName, "read")
+        .pipe(
+          Effect.mapError(() =>
+            failed("load committed RFD", "A repository token could not be issued."),
+          ),
+        );
+      return yield* git
+        .read({ remote: record.artifactRemote, token })
+        .pipe(
+          Effect.mapError(() =>
+            failed("load committed RFD", "The committed repository could not be read."),
+          ),
+        );
+    });
+
+    const checkpoint = Effect.fn("RfdRepository.checkpoint")(function* (
+      input: CheckpointRfdInput,
+      user: CurrentUser,
+    ) {
+      const record = yield* catalog
+        .getRecord(input.rfdId)
+        .pipe(
+          Effect.mapError(
+            () => new CheckpointFailed({ message: "The RFD catalog record could not be loaded." }),
+          ),
+        );
+      if (record === null) {
+        return yield* new CheckpointFailed({ message: `RFD ${input.rfdId} was not found.` });
+      }
+      const role = yield* catalog
+        .getRoomRole(input.rfdId, user.id)
+        .pipe(
+          Effect.mapError(
+            () =>
+              new CheckpointFailed({ message: "Checkpoint authorization could not be verified." }),
+          ),
+        );
+      if (role !== "owner" && role !== "editor") {
+        return yield* new CheckpointFailed({ message: "Checkpoint permission was denied." });
+      }
+      const parsed = yield* Effect.fromResult(parseRfdDocument(input.source)).pipe(
+        Effect.mapError(
+          (error) => new CheckpointFailed({ message: `The draft is invalid: ${error.message}` }),
+        ),
+      );
+      if (parsed.frontmatter.number !== record.number) {
+        return yield* new CheckpointFailed({
+          message: "The draft RFD number does not match the repository being checkpointed.",
+        });
+      }
+      if (
+        parsed.frontmatter.status !== record.status &&
+        !canTransitionRfdStatus(record.status, parsed.frontmatter.status)
+      ) {
+        return yield* new CheckpointFailed({
+          message: `RFD status cannot transition from ${record.status} to ${parsed.frontmatter.status}.`,
+        });
+      }
+      const timestamp = yield* Clock.currentTimeMillis;
+      const source = serializeRfdDocument({
+        frontmatter: {
+          ...parsed.frontmatter,
+          updated: new Date(timestamp).toISOString().slice(0, 10),
+        },
+        body: parsed.body,
+      });
+      const token = yield* artifacts
+        .createToken(record.artifactRepoName, "write")
+        .pipe(
+          Effect.mapError(
+            () =>
+              new CheckpointFailed({ message: "A repository write token could not be issued." }),
+          ),
+        );
+      const committed = yield* git
+        .checkpoint({
+          remote: record.artifactRemote,
+          token,
+          source,
+          authorName: user.name,
+          expectedHeadSha: input.expectedHeadSha,
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            error._tag === "GitCheckpointConflict"
+              ? new CheckpointConflict({
+                  expectedHeadSha: error.expectedHeadSha,
+                  actualHeadSha: error.actualHeadSha,
+                  message:
+                    "The committed RFD changed while this draft was open. The draft was preserved.",
+                })
+              : new CheckpointFailed({
+                  message: "The checkpoint could not be pushed. The draft was preserved.",
+                }),
+          ),
+        );
+      yield* catalog
+        .commitCheckpoint({
+          rfdId: input.rfdId,
+          expectedHeadSha: committed.previousHeadSha,
+          nextHeadSha: committed.headSha,
+          title: parsed.frontmatter.title,
+          status: parsed.frontmatter.status,
+          committedSource: source,
+          timestamp,
+        })
+        .pipe(
+          Effect.mapError(
+            () =>
+              new CheckpointFailed({
+                message:
+                  "The checkpoint was committed, but the catalog could not be synchronized. The Git commit is preserved; reopen the RFD to recover it.",
+              }),
+          ),
+        );
+      return {
+        rfdId: input.rfdId,
+        previousHeadSha: committed.previousHeadSha,
+        headSha: committed.headSha,
+      };
+    });
+
+    const getRoomRole = Effect.fn("RfdRepository.getRoomRole")((rfdId, userId) =>
+      catalog
+        .getRoomRole(rfdId, userId)
+        .pipe(
+          Effect.mapError(() =>
+            failed("authorize RFD room", "The RFD room membership could not be loaded."),
+          ),
+        ),
+    );
+
+    return RfdRepository.of({
+      list,
+      create,
+      get,
+      loadCommittedSource,
+      checkpoint,
+      getRoomRole,
+    });
   }),
 );
 

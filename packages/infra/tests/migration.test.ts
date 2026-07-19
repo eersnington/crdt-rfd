@@ -7,6 +7,13 @@ const migration = readFileSync(
   fileURLToPath(new URL("../migrations/0001_foundation.sql", import.meta.url)),
   "utf8",
 );
+const rfdMigrations = [
+  "0002_rfd_catalog.sql",
+  "0003_rfd_committed_source.sql",
+  "0004_editor_roles.sql",
+].map((name) =>
+  readFileSync(fileURLToPath(new URL(`../migrations/${name}`, import.meta.url)), "utf8"),
+);
 
 const setup = () => {
   const database = new Database(":memory:");
@@ -19,6 +26,24 @@ const setup = () => {
 };
 
 describe("foundation migration", () => {
+  it("backfills the owner into the collaborative editor role model", () => {
+    const database = setup();
+    for (const sql of rfdMigrations.slice(0, 2)) database.exec(sql);
+    database.exec(
+      "INSERT INTO rfd_catalog (rfd_id, number, title, artifact_repo_name, artifact_remote, head_sha, owner_user_id, created_at, updated_at) VALUES ('r1', 1, 'Editor', 'rfd-r1', 'https://example.invalid/r1.git', '0123456789012345678901234567890123456789', 'u1', 1, 1)",
+    );
+    database.exec("INSERT INTO rfd_memberships VALUES ('w1', 'r1', 'u1', 'author', 1, 1)");
+    database.exec("INSERT INTO rfd_memberships VALUES ('w1', 'r1', 'u2', 'reviewer', 1, 1)");
+    database.exec(rfdMigrations.at(2) ?? "");
+    expect(
+      database
+        .prepare("SELECT user_id, role FROM rfd_membership_v2 WHERE rfd_id = 'r1' ORDER BY user_id")
+        .all(),
+    ).toEqual([
+      { user_id: "u1", role: "owner" },
+      { user_id: "u2", role: "commenter" },
+    ]);
+  });
   it("applies Better Auth and application tables from zero", () => {
     const database = setup();
     const names = database

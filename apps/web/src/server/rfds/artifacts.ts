@@ -1,6 +1,7 @@
 import type { WebsiteEnv } from "../../../../../packages/infra/alchemy.run";
-import { env } from "cloudflare:workers";
 import { Context, Effect, Layer, Schedule, Schema } from "effect";
+
+import { cloudflareEnv } from "../env";
 
 type ArtifactsBinding = WebsiteEnv["ARTIFACTS"];
 type CreatedRepository = Awaited<ReturnType<ArtifactsBinding["create"]>>;
@@ -103,6 +104,8 @@ export const makeArtifactStore = (artifacts: ArtifactsBinding): ArtifactStoreSha
   return ArtifactStore.of({ createRepository, waitUntilReady, createToken });
 };
 
-export const ArtifactStoreLive = Layer.sync(ArtifactStore, () => makeArtifactStore(env.ARTIFACTS));
+export const ArtifactStoreLive = Layer.sync(ArtifactStore, () =>
+  makeArtifactStore(cloudflareEnv.ARTIFACTS),
+);
 
 export type { ArtifactStoreError };

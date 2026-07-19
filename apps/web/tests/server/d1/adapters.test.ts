@@ -43,14 +43,14 @@ describe("D1 membership store", () => {
     );
     expect(result).toEqual({
       workspaceOwner: true,
-      rfdRole: "author",
+      rfdRole: "owner",
       policy: { reviewerCanMerge: true },
     });
   });
 
   it("maps malformed D1 rows to MembershipStoreError", async () => {
     const error = await Effect.runPromise(
-      d1MembershipStore(databaseFor(workspace, { ...membership, role: "owner" }))
+      d1MembershipStore(databaseFor(workspace, { ...membership, role: "invalid" }))
         .load(input)
         .pipe(Effect.flip),
     );
