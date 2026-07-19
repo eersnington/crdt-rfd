@@ -1,0 +1,55 @@
+diff --git a/src/Cloudflare/Workers/LocalWorkerProvider.ts b/src/Cloudflare/Workers/LocalWorkerProvider.ts
+--- a/src/Cloudflare/Workers/LocalWorkerProvider.ts
++++ b/src/Cloudflare/Workers/LocalWorkerProvider.ts
+@@ -409,9 +409,7 @@
+         worker: WorkerConfig,
+         rootDir: string | undefined,
+       ) {
+-        const proxy = yield* maybeStartProxy(worker.id, worker.dev);
+-        yield* proxy.unset().pipe(Effect.forkChild);
+         // Loaded lazily: `./Vite.ts` pulls in `@distilled.cloud/cloudflare-vite-plugin`
+         // (~0.5s); only needed when running a vite dev server.
+         const Vite = yield* Effect.promise(() => import("./Vite.ts"));
+         const devServer = yield* Vite.viteDev(
+@@ -431,10 +429,13 @@
+             },
+             context,
+           },
+-          { port: 0 },
++          {
++            host: worker.dev.host,
++            port: worker.dev.port,
++            strictPort: worker.dev.strictPort,
++          },
+         );
+-        yield* proxy.set(new URL(devServer.resolvedUrls!.local[0]));
+-        return proxy.url;
++        return new URL(devServer.resolvedUrls!.local[0]);
+       });
+ 
+       const rootScope = yield* Effect.scope;
+diff --git a/lib/Cloudflare/Workers/LocalWorkerProvider.js b/lib/Cloudflare/Workers/LocalWorkerProvider.js
+--- a/lib/Cloudflare/Workers/LocalWorkerProvider.js
++++ b/lib/Cloudflare/Workers/LocalWorkerProvider.js
+@@ -281,7 +281,5 @@
+     });
+     const runVite = Effect.fn(function* (worker, rootDir) {
+-        const proxy = yield* maybeStartProxy(worker.id, worker.dev);
+-        yield* proxy.unset().pipe(Effect.forkChild);
+         // Loaded lazily: `./Vite.ts` pulls in `@distilled.cloud/cloudflare-vite-plugin`
+         // (~0.5s); only needed when running a vite dev server.
+         const Vite = yield* Effect.promise(() => import("./Vite.js"));
+@@ -297,7 +295,10 @@
+                 assets: toRuntimeAssets(worker.assets),
+             },
+             context,
+-        }, { port: 0 });
+-        yield* proxy.set(new URL(devServer.resolvedUrls.local[0]));
+-        return proxy.url;
++        }, {
++            host: worker.dev.host,
++            port: worker.dev.port,
++            strictPort: worker.dev.strictPort,
++        });
++        return new URL(devServer.resolvedUrls.local[0]);
+     });

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun alchemy dev --profile crdt-rfd --env-file ../../apps/web/.env",
+    "dev": "node node_modules/alchemy/bin/alchemy.js dev --profile crdt-rfd --env-file ../../apps/web/.env",
     "deploy": "bun alchemy deploy --profile crdt-rfd --env-file ../../apps/web/.env.production",
     "destroy": "bun alchemy destroy --profile crdt-rfd --env-file ../../apps/web/.env.production",
     "plan": "bun alchemy deploy --profile crdt-rfd --env-file ../../apps/web/.env.production --dry-run",
