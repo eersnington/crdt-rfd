@@ -121,7 +121,19 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
     const server = pair[1];
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ identity: identity.success } satisfies SocketAttachment);
-    server.send(JSON.stringify({ type: "bootstrap", generation: this.generation }));
+    const role = identity.success.role;
+    server.send(
+      JSON.stringify({
+        type: "bootstrap",
+        generation: this.generation,
+        capability: {
+          role,
+          canEdit: role !== "commenter",
+          canCheckpoint: role !== "commenter",
+          canManageMembers: role === "owner",
+        },
+      }),
+    );
     server.send(this.frame(messageDocumentSnapshot, Y.encodeStateAsUpdate(this.document)));
     this.broadcast(this.frame(messageAwarenessQuery, new Uint8Array()), server);
     server.send(JSON.stringify({ type: "status", status: this.status }));

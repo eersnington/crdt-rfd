@@ -1,6 +1,6 @@
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as Y from "yjs";
-import type { RoomStatus } from "@crdt-rfd/domain";
+import type { RoomCapability, RoomStatus } from "@crdt-rfd/domain";
 
 const messageDocumentUpdate = 0;
 const messageAwareness = 1;
@@ -27,15 +27,18 @@ export class RfdRoomProvider {
   private hasConnected = false;
   private failedConnectionAttempts = 0;
   private roomStatus: RoomStatus | null = null;
+  private capability: RoomCapability | null = null;
   private error: string | null = null;
   private generation: number | null = null;
   private snapshot: {
     readonly connection: ConnectionStatus;
     readonly room: RoomStatus | null;
+    readonly capability: RoomCapability | null;
     readonly error: string | null;
   } = {
     connection: "disconnected",
     room: null,
+    capability: null,
     error: null,
   };
   private readonly listeners = new Set<() => void>();
@@ -109,6 +112,7 @@ export class RfdRoomProvider {
       this.snapshot = {
         connection: this.connectionStatus,
         room: this.roomStatus,
+        capability: this.capability,
         error: null,
       };
       this.emit();
@@ -131,6 +135,7 @@ export class RfdRoomProvider {
         readonly status?: RoomStatus;
         readonly message?: string;
         readonly generation?: number;
+        readonly capability?: RoomCapability;
       };
       if (event.type === "bootstrap" && event.generation !== undefined) {
         if (this.generation !== null && this.generation !== event.generation) {
@@ -138,11 +143,22 @@ export class RfdRoomProvider {
           return;
         }
         this.generation = event.generation;
+        if (event.capability !== undefined) {
+          this.capability = event.capability;
+          this.snapshot = {
+            connection: this.connectionStatus,
+            room: this.roomStatus,
+            capability: this.capability,
+            error: this.error,
+          };
+          this.emit();
+        }
       } else if (event.type === "status" && event.status !== undefined) {
         this.roomStatus = event.status;
         this.snapshot = {
           connection: this.connectionStatus,
           room: this.roomStatus,
+          capability: this.capability,
           error: this.error,
         };
         this.emit();
@@ -155,6 +171,7 @@ export class RfdRoomProvider {
         this.snapshot = {
           connection: this.connectionStatus,
           room: this.roomStatus,
+          capability: this.capability,
           error: this.error,
         };
         this.emit();
@@ -213,6 +230,7 @@ export class RfdRoomProvider {
     this.snapshot = {
       connection: this.connectionStatus,
       room: this.roomStatus,
+      capability: this.capability,
       error: this.error,
     };
     this.emit();
