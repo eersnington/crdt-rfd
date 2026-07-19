@@ -1,3 +1,4 @@
+import { lazy, Suspense, useState } from "react";
 import { RegistryProvider, useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { MagnifyingGlassIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { RfdId } from "@crdt-rfd/domain";
@@ -9,6 +10,10 @@ import { RfdSearchProvider } from "@/components/rfd-search";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { rfdDocumentAtom, searchDialogOpenAtom, sessionAtom, signOutAtom } from "@/rpc/client";
+
+const RfdEditor = lazy(() =>
+  import("@/components/editor/rfd-editor").then((module) => ({ default: module.RfdEditor })),
+);
 
 export const Route = createFileRoute("/rfd/$rfdId")({
   component: RfdPage,
@@ -80,12 +85,22 @@ function RfdRoute() {
 
 function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   const document = useAtomValue(rfdDocumentAtom(rfdId));
+  const session = useAtomValue(sessionAtom);
+  const [editing, setEditing] = useState(false);
 
   if (AsyncResult.isFailure(document)) {
     return <DocumentMessage message="The committed RFD could not be loaded. Try again shortly." />;
   }
   if (!AsyncResult.isSuccess(document)) {
     return <DocumentMessage message="Loading committed RFD…" />;
+  }
+  const user = AsyncResult.isSuccess(session) ? session.value?.user : undefined;
+  if (editing && user !== undefined) {
+    return (
+      <Suspense fallback={<DocumentMessage message="Opening collaborative editor…" />}>
+        <RfdEditor key={rfdId} rfdId={rfdId} user={user} onClose={() => setEditing(false)} />
+      </Suspense>
+    );
   }
 
   return (
@@ -94,6 +109,11 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
         <Link to="/" className="font-mono text-xs tracking-wide text-primary uppercase">
           ← All RFDs
         </Link>
+        {user === undefined ? null : (
+          <Button type="button" className="float-right" onClick={() => setEditing(true)}>
+            Edit collaboratively
+          </Button>
+        )}
         <header className="mt-10 border-b pb-8">
           <p className="font-mono text-xs text-primary">RFD {document.value.number}</p>
           <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">

@@ -88,9 +88,14 @@ const config = defineConfig({
       "unicorn/prefer-node-protocol": "error",
     },
   },
-  resolve: { tsconfigPaths: true },
+  resolve: { tsconfigPaths: true, dedupe: ["yjs", "y-protocols", "y-prosemirror"] },
   build: { rolldownOptions: { external: ["cloudflare:workers"] } },
-  plugins: [devtools(), tailwindcss(), tanstackStart(), viteReact()],
+  plugins: [
+    devtools(),
+    tailwindcss(),
+    tanstackStart({ server: { entry: "./server.ts" } }),
+    viteReact(),
+  ],
 });
 
 export default config;

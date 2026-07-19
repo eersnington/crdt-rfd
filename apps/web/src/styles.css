@@ -149,3 +149,39 @@
     @apply font-sans;
   }
 }
+
+@layer components {
+  .ProseMirror h1 {
+    @apply mt-10 mb-4 font-heading text-4xl leading-tight;
+  }
+  .ProseMirror h2 {
+    @apply mt-9 mb-3 font-heading text-2xl;
+  }
+  .ProseMirror h3 {
+    @apply mt-7 mb-2 font-heading text-xl;
+  }
+  .ProseMirror p {
+    @apply my-4;
+  }
+  .ProseMirror ul {
+    @apply my-4 list-disc pl-6;
+  }
+  .ProseMirror ol {
+    @apply my-4 list-decimal pl-6;
+  }
+  .ProseMirror blockquote {
+    @apply my-5 border-l-2 border-primary pl-4 text-muted-foreground;
+  }
+  .ProseMirror pre {
+    @apply my-5 overflow-x-auto border bg-muted p-4 font-mono text-sm;
+  }
+  .ProseMirror code:not(pre code) {
+    @apply bg-muted px-1 py-0.5 font-mono text-sm;
+  }
+  .collaboration-carets__caret {
+    @apply pointer-events-none relative border-l-2;
+  }
+  .collaboration-carets__label {
+    @apply absolute -top-5 left-0 whitespace-nowrap px-1 py-0.5 font-mono text-[10px] text-white;
+  }
+}
