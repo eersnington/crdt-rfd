@@ -6,7 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 const yjsRuntimePackages = [
   "yjs",
-  "y-protocols",
+  "y-protocols/awareness",
   "y-prosemirror",
   "@tiptap/y-tiptap",
   "@tiptap/extension-collaboration",
