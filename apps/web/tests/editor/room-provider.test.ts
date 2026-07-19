@@ -86,4 +86,19 @@ describe("RfdRoomProvider lifecycle", () => {
     expect(provider.getSnapshot().error).toBe("Room connection closed (1006). Retrying…");
     provider.destroy();
   });
+
+  it("notifies the editor when a checkpoint commits", () => {
+    vi.stubGlobal("window", { location: { protocol: "https:", host: "example.test" } });
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const onCheckpoint = vi.fn();
+    const provider = new RfdRoomProvider("r1", onCheckpoint);
+
+    provider.connect();
+    FakeWebSocket.instances[0]?.onmessage?.({
+      data: JSON.stringify({ type: "checkpoint" }),
+    });
+
+    expect(onCheckpoint).toHaveBeenCalledOnce();
+    provider.destroy();
+  });
 });

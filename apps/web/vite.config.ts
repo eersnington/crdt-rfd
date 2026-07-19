@@ -4,6 +4,15 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+const yjsRuntimePackages = [
+  "yjs",
+  "y-protocols",
+  "y-prosemirror",
+  "@tiptap/y-tiptap",
+  "@tiptap/extension-collaboration",
+  "@tiptap/extension-collaboration-caret",
+];
+
 const config = defineConfig({
   lint: {
     plugins: ["import", "typescript", "unicorn"],
@@ -88,7 +97,14 @@ const config = defineConfig({
       "unicorn/prefer-node-protocol": "error",
     },
   },
-  resolve: { tsconfigPaths: true, dedupe: ["yjs", "y-protocols", "y-prosemirror"] },
+  resolve: {
+    tsconfigPaths: true,
+    dedupe: yjsRuntimePackages,
+  },
+  // Yjs instances must be shared with Tiptap in every Vite runtime.
+  optimizeDeps: { include: yjsRuntimePackages },
+  ssr: { noExternal: yjsRuntimePackages },
+  test: { server: { deps: { inline: yjsRuntimePackages } } },
   build: { rolldownOptions: { external: ["cloudflare:workers"] } },
   plugins: [
     devtools(),

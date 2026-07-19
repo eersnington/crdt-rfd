@@ -40,7 +40,10 @@ export class RfdRoomProvider {
   };
   private readonly listeners = new Set<() => void>();
 
-  constructor(private readonly rfdId: string) {
+  constructor(
+    private readonly rfdId: string,
+    private readonly onCheckpoint?: () => void,
+  ) {
     this.document.on("update", this.onDocumentUpdate);
     this.awareness.on("update", this.onAwarenessUpdate);
   }
@@ -143,6 +146,8 @@ export class RfdRoomProvider {
           error: this.error,
         };
         this.emit();
+      } else if (event.type === "checkpoint") {
+        this.onCheckpoint?.();
       } else if (event.type === "reset") {
         window.location.reload();
       } else if (event.type === "error") {

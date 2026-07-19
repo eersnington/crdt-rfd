@@ -22,12 +22,14 @@ export function RfdEditor({
   rfdId,
   user,
   onClose,
+  onCheckpoint,
 }: {
   readonly rfdId: RfdId;
   readonly user: CurrentUser;
   readonly onClose: () => void;
+  readonly onCheckpoint: () => void;
 }) {
-  const [provider] = useState(() => new RfdRoomProvider(rfdId));
+  const [provider] = useState(() => new RfdRoomProvider(rfdId, onCheckpoint));
   const [slashOpen, setSlashOpen] = useState(false);
   const state = useSyncExternalStore(
     provider.subscribe,
@@ -81,7 +83,15 @@ export function RfdEditor({
   const roomLabel =
     state.connection !== "connected"
       ? state.connection
-      : (state.room?._tag.toLowerCase() ?? "loading");
+      : state.room?._tag === "Clean"
+        ? "saved"
+        : state.room?._tag === "Dirty"
+          ? "uncommitted changes"
+          : state.room?._tag === "Checkpointing"
+            ? "checkpointing"
+            : state.room?._tag === "Conflicted"
+              ? "conflicted"
+              : "loading";
 
   return (
     <main className="min-h-svh bg-background px-4 pt-24 pb-28 sm:px-6 sm:pt-28">

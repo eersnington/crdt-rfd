@@ -1,5 +1,11 @@
 import { lazy, Suspense, useState } from "react";
-import { RegistryProvider, useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
+import {
+  RegistryProvider,
+  useAtom,
+  useAtomRefresh,
+  useAtomSet,
+  useAtomValue,
+} from "@effect/atom-react";
 import { MagnifyingGlassIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { RfdId } from "@crdt-rfd/domain";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -85,6 +91,7 @@ function RfdRoute() {
 
 function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   const document = useAtomValue(rfdDocumentAtom(rfdId));
+  const refreshDocument = useAtomRefresh(rfdDocumentAtom(rfdId));
   const session = useAtomValue(sessionAtom);
   const [editing, setEditing] = useState(false);
 
@@ -98,7 +105,13 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   if (editing && user !== undefined) {
     return (
       <Suspense fallback={<DocumentMessage message="Opening collaborative editor…" />}>
-        <RfdEditor key={rfdId} rfdId={rfdId} user={user} onClose={() => setEditing(false)} />
+        <RfdEditor
+          key={rfdId}
+          rfdId={rfdId}
+          user={user}
+          onClose={() => setEditing(false)}
+          onCheckpoint={refreshDocument}
+        />
       </Suspense>
     );
   }
