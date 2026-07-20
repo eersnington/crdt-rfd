@@ -14,6 +14,8 @@ import {
   type UserId,
   WorkspaceId,
   canTransitionRfdStatus,
+  describeAutoCheckpointMessage,
+  nextRfdStatuses,
   hasPermission,
   parseRfdDocument,
   serializeRfdDocument,
@@ -115,6 +117,49 @@ describe("RFD statuses", () => {
       it(`${from} -> ${to}`, () =>
         expect(canTransitionRfdStatus(from, to)).toBe(allowed.has(`${from}:${to}`)));
     }
+
+  it("lists only legal next statuses", () => {
+    expect(nextRfdStatuses("draft")).toEqual(["discussion"]);
+    expect(nextRfdStatuses("discussion")).toEqual(["accepted", "rejected"]);
+    expect(nextRfdStatuses("accepted")).toEqual(["superseded"]);
+    expect(nextRfdStatuses("rejected")).toEqual([]);
+    expect(nextRfdStatuses("superseded")).toEqual([]);
+  });
+});
+
+describe("auto checkpoint messages", () => {
+  const base = { title: "RFD Test", status: "draft" as const, body: "hello\n" };
+
+  it("describes status-only changes", () => {
+    expect(describeAutoCheckpointMessage(base, { ...base, status: "discussion" })).toBe(
+      "Status → Discussion",
+    );
+  });
+
+  it("describes title renames", () => {
+    expect(describeAutoCheckpointMessage(base, { ...base, title: "New title" })).toBe(
+      "Rename to “New title”",
+    );
+  });
+
+  it("describes body updates", () => {
+    expect(describeAutoCheckpointMessage(base, { ...base, body: "goodbye\n" })).toBe("Update body");
+  });
+
+  it("joins multiple changes", () => {
+    expect(
+      describeAutoCheckpointMessage(base, {
+        title: "Ship it",
+        status: "discussion",
+        body: "updated\n",
+      }),
+    ).toBe("Status → Discussion; Rename to “Ship it”; Update body");
+  });
+
+  it("falls back when nothing changed", () => {
+    expect(describeAutoCheckpointMessage(base, base)).toBe("Update RFD");
+    expect(describeAutoCheckpointMessage(null, base)).toBe("Update RFD");
+  });
 });
 
 describe("authorization", () => {

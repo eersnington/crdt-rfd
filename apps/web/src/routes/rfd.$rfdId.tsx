@@ -20,7 +20,9 @@ import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 
 import { RfdHeader } from "@/components/rfd-header";
 import { RfdSearchProvider } from "@/components/rfd-search";
+import { RfdStatusControl } from "@/components/rfd-status-control";
 import { Button } from "@/components/ui/button";
+import { parseRfdStatus } from "@/lib/rfd-presentation";
 import {
   Dialog,
   DialogContent,
@@ -169,15 +171,22 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
               key={rfdId}
               rfdId={rfdId}
               user={user}
+              baseline={{
+                title: committed.title,
+                status: committed.status,
+                body: committed.body,
+              }}
               onCheckpoint={refreshDocument}
-              renderMetadata={({ title, metadata, canEdit, setMetadata }) => (
+              renderMetadata={({ title, status, metadata, canEdit, setMetadata }) => (
                 <EditableDocumentHeader
                   number={committed.number}
                   forkedFrom={committed.forkedFrom}
                   author={committed.author}
                   headSha={committed.headSha}
                   checkpointMessage={committed.checkpointMessage}
-                  title={title || committed.title}
+                  title={title}
+                  fallbackTitle={committed.title}
+                  status={parseRfdStatus(status)}
                   metadata={metadata}
                   canEdit={canEdit}
                   setMetadata={setMetadata}
@@ -185,7 +194,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
               )}
               renderActions={({ checkpoint, canPublish, roomState }) => (
                 <>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex h-8 shrink-0 items-center gap-2">
                     <Button
                       type="button"
                       className={actionButtonClass}
@@ -300,6 +309,9 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
             />
           </div>
           <dl className="mt-8">
+            <PropertyRow label="Status">
+              <RfdStatusControl status={committed.status} canEdit={false} />
+            </PropertyRow>
             <PropertyRow label="Author">{committed.author}</PropertyRow>
             <PropertyRow label="Updated">
               {new Date(committed.updated).toLocaleString()}
@@ -387,33 +399,54 @@ function LiveDocumentPlaceholder({
   readonly committed: {
     readonly number: number;
     readonly title: string;
+    readonly status: ReturnType<typeof parseRfdStatus>;
     readonly author: string;
     readonly headSha: string;
     readonly checkpointMessage: string;
+    readonly body: string;
+    readonly forkedFrom: { readonly rfdId: string; readonly number: number } | null;
   };
 }) {
   return (
     <>
-      <header>
-        <p className="font-mono text-xs tracking-wider text-primary uppercase">
-          {committed.number > 0 ? `RFD ${committed.number}` : "Loading checkpoint"}
-        </p>
-        <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
-          {committed.title}
-        </h1>
-        <dl className="mt-8">
-          <PropertyRow label="Author">
-            {committed.author === "" ? <Skeleton className="h-4 w-36" /> : committed.author}
-          </PropertyRow>
-          <PropertyRow label="Checkpoint">
-            <span className="font-mono text-xs">{committed.headSha.slice(0, 8)}</span>
-            {committed.checkpointMessage === "" ? null : (
-              <span className="text-muted-foreground"> · {committed.checkpointMessage}</span>
-            )}
-          </PropertyRow>
-        </dl>
-      </header>
-      <Skeleton className="mt-10 min-h-[24rem]" aria-label="Loading live document" />
+      <EditableDocumentHeader
+        number={committed.number}
+        forkedFrom={committed.forkedFrom}
+        author={committed.author === "" ? "…" : committed.author}
+        headSha={committed.headSha}
+        checkpointMessage={committed.checkpointMessage}
+        title={committed.title}
+        fallbackTitle={committed.title}
+        status={committed.status}
+        metadata={{}}
+        canEdit={false}
+        setMetadata={() => undefined}
+      />
+      <div className="sticky top-14 z-30 -mx-4 mt-6 mb-8 border-b bg-background/90 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
+        <div className="flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-8 w-[5.75rem] shrink-0 items-center" />
+            <span className="min-w-40 truncate font-mono text-xs text-muted-foreground">
+              Connecting…
+            </span>
+          </div>
+          <div className="flex h-8 shrink-0 items-center gap-2">
+            <Button type="button" className={actionButtonClass} disabled>
+              Checkpoint
+            </Button>
+            <Button type="button" variant="outline" className={actionButtonClass} disabled>
+              Close live view
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div className="min-h-[24rem]">
+        {committed.body === "" ? (
+          <Skeleton className="min-h-[24rem]" aria-label="Loading live document" />
+        ) : (
+          <RfdReader source={committed.body} />
+        )}
+      </div>
     </>
   );
 }
@@ -592,9 +625,12 @@ function HistoricalRfdDocument({
               committed={{
                 number: 0,
                 title: "Loading checkpoint",
+                status: "draft",
                 author: "",
                 headSha: sha,
                 checkpointMessage: "",
+                body: "",
+                forkedFrom: null,
               }}
             />
           </div>
@@ -625,6 +661,9 @@ function HistoricalRfdDocument({
               <VersionActions rfdId={rfdId} ref={{ _tag: "Checkpoint", sha }} signedIn={signedIn} />
             </div>
             <dl className="mt-8">
+              <PropertyRow label="Status">
+                <RfdStatusControl status={document.value.status} canEdit={false} />
+              </PropertyRow>
               <PropertyRow label="Author">{document.value.author}</PropertyRow>
               <PropertyRow label="Updated">
                 {new Date(document.value.updated).toLocaleString()}
@@ -837,6 +876,8 @@ function EditableDocumentHeader({
   headSha,
   checkpointMessage,
   title,
+  fallbackTitle,
+  status,
   metadata,
   canEdit,
   setMetadata,
@@ -847,6 +888,8 @@ function EditableDocumentHeader({
   readonly headSha: string;
   readonly checkpointMessage: string;
   readonly title: string;
+  readonly fallbackTitle: string;
+  readonly status: ReturnType<typeof parseRfdStatus>;
   readonly metadata: {
     readonly authors?: readonly string[];
     readonly reviewers?: readonly string[];
@@ -867,8 +910,21 @@ function EditableDocumentHeader({
         className="mt-3 w-full bg-transparent text-balance font-heading text-4xl leading-tight outline-none focus-visible:ring-1 focus-visible:ring-ring/50 sm:text-5xl"
         value={title}
         onChange={(event) => setMetadata("title", event.target.value)}
+        onBlur={() => {
+          if (!canEdit) return;
+          if (title.trim().length > 0) return;
+          setMetadata("title", fallbackTitle);
+        }}
       />
       <dl className="mt-6">
+        <PropertyRow label="Status">
+          <RfdStatusControl
+            status={status}
+            canEdit={canEdit}
+            appearance="editor"
+            onChange={(next) => setMetadata("status", next)}
+          />
+        </PropertyRow>
         <PropertyRow label="Author">{author}</PropertyRow>
         <PropertyRow label="Checkpoint">
           <span className="font-mono text-xs">{headSha.slice(0, 8)}</span>

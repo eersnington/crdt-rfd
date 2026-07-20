@@ -7,6 +7,7 @@ import {
   RfdOperationFailed,
   RfdSummary,
   UserId,
+  describeAutoCheckpointMessage,
   parseRfdDocument,
   canTransitionRfdStatus,
   serializeRfdDocument,
@@ -26,7 +27,7 @@ import {
   type RoomRole,
   type RfdSummary as RfdSummaryValue,
 } from "@crdt-rfd/domain";
-import { Clock, Context, Effect, Layer, Schema } from "effect";
+import { Clock, Context, Effect, Layer, Result, Schema } from "effect";
 
 import { cloudflareEnv } from "../env";
 import { publicCloneRemote } from "../git/public-remote";
@@ -468,11 +469,34 @@ const RfdRepositoryLayer = Layer.effect(
           message: `RFD status cannot transition from ${record.status} to ${parsed.frontmatter.status}.`,
         });
       }
+      const previousDocument =
+        record.committedSource === null
+          ? null
+          : Result.getOrNull(parseRfdDocument(record.committedSource));
+      const title =
+        parsed.frontmatter.title.trim().length > 0 ? parsed.frontmatter.title : record.title;
       const timestamp = yield* Clock.currentTimeMillis;
-      const checkpointMessage = input.message ?? "Automatic checkpoint";
+      const nextSnapshot = {
+        title,
+        status: parsed.frontmatter.status,
+        body: parsed.body,
+      };
+      const checkpointMessage =
+        input.message?.trim() ||
+        describeAutoCheckpointMessage(
+          previousDocument === null
+            ? { title: record.title, status: record.status, body: "" }
+            : {
+                title: previousDocument.frontmatter.title,
+                status: previousDocument.frontmatter.status,
+                body: previousDocument.body,
+              },
+          nextSnapshot,
+        );
       const source = serializeRfdDocument({
         frontmatter: {
           ...parsed.frontmatter,
+          title,
           updated: new Date(timestamp).toISOString().slice(0, 10),
         },
         body: parsed.body,
@@ -513,7 +537,7 @@ const RfdRepositoryLayer = Layer.effect(
           rfdId: input.rfdId,
           expectedHeadSha: committed.previousHeadSha,
           nextHeadSha: committed.headSha,
-          title: parsed.frontmatter.title,
+          title,
           status: parsed.frontmatter.status,
           committedSource: source,
           checkpointMessage,
