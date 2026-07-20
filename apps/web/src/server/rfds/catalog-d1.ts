@@ -1,6 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import {
   CommitSha,
+  RfdCheckpoint,
   RfdId,
   RfdNumber,
   RfdStatus,
@@ -8,6 +9,7 @@ import {
   UserId,
   RoomRole,
   type CommitSha as CommitShaValue,
+  type RfdCheckpoint as RfdCheckpointValue,
   type RfdId as RfdIdValue,
   type RfdNumber as RfdNumberValue,
   type RfdStatus as RfdStatusValue,
@@ -92,6 +94,8 @@ export class CatalogCheckpointConflict extends Schema.TaggedErrorClass<CatalogCh
   { rfdId: RfdId, expectedHeadSha: CommitSha },
 ) {}
 
+const historyDepth = 20;
+
 export interface RfdCatalogStoreShape {
   readonly list: () => Effect.Effect<
     ReadonlyArray<RfdSummaryValue>,
@@ -107,7 +111,12 @@ export interface RfdCatalogStoreShape {
   readonly loadGithubLogin: (
     userId: UserIdValue,
   ) => Effect.Effect<string, CatalogQueryFailed | GithubAccountNotLinked | InvalidCatalogRecord>;
-  readonly insert: (record: InsertCatalogRecord) => Effect.Effect<void, CatalogQueryFailed>;
+  readonly insert: (
+    record: InsertCatalogRecord & {
+      readonly authorName: string;
+      readonly checkpointMessage?: string;
+    },
+  ) => Effect.Effect<void, CatalogQueryFailed>;
   readonly cacheCommittedSource: (input: {
     readonly rfdId: RfdIdValue;
     readonly headSha: CommitShaValue;
@@ -126,8 +135,16 @@ export interface RfdCatalogStoreShape {
     readonly status: RfdStatusValue;
     readonly committedSource: string;
     readonly checkpointMessage: string;
+    readonly authorName: string;
     readonly timestamp: number;
   }) => Effect.Effect<void, CatalogQueryFailed | CatalogCheckpointConflict>;
+  readonly listHistory: (
+    rfdId: RfdIdValue,
+  ) => Effect.Effect<ReadonlyArray<RfdCheckpointValue>, CatalogQueryFailed | InvalidCatalogRecord>;
+  readonly replaceHistory: (
+    rfdId: RfdIdValue,
+    checkpoints: ReadonlyArray<RfdCheckpointValue>,
+  ) => Effect.Effect<void, CatalogQueryFailed>;
   readonly getRoomRole: (
     rfdId: RfdIdValue,
     userId: UserIdValue,
@@ -251,8 +268,9 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
       Effect.mapError((cause) => new InvalidCatalogRecord({ query: "load GitHub account", cause })),
     );
   }),
-  insert: Effect.fn("RfdCatalogStore.insert")((record) =>
-    query("insert catalog record and owner membership", () =>
+  insert: Effect.fn("RfdCatalogStore.insert")(function* (record) {
+    const checkpointMessage = record.checkpointMessage ?? "Create RFD";
+    yield* query("insert catalog record and owner membership", () =>
       database.batch([
         database
           .prepare(
@@ -260,7 +278,7 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
             (rfd_id, number, title, status, artifact_repo_name, artifact_remote, head_sha,
               committed_source, checkpoint_message, forked_from_rfd_id, forked_from_sha,
               owner_user_id, created_at, updated_at)
-             VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, 'Create RFD', ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             record.rfdId,
@@ -270,6 +288,7 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
             record.artifactRemote,
             record.headSha,
             record.committedSource,
+            checkpointMessage,
             record.forkedFrom?.rfdId ?? null,
             record.forkedFrom?.sha ?? null,
             record.ownerUserId,
@@ -282,9 +301,22 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
              VALUES (?, ?, 'owner', ?, ?)`,
           )
           .bind(record.rfdId, record.ownerUserId, record.timestamp, record.timestamp),
+        database
+          .prepare(
+            `INSERT OR IGNORE INTO rfd_checkpoint_history
+              (rfd_id, sha, message, author, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            record.rfdId,
+            record.headSha,
+            checkpointMessage,
+            record.authorName,
+            record.timestamp,
+          ),
       ]),
-    ).pipe(Effect.asVoid),
-  ),
+    );
+  }),
   cacheCommittedSource: Effect.fn("RfdCatalogStore.cacheCommittedSource")((input) =>
     query("cache committed RFD source", () =>
       database
@@ -327,6 +359,85 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
         expectedHeadSha: input.expectedHeadSha,
       });
     }
+    yield* query("append checkpoint history", () =>
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO rfd_checkpoint_history
+            (rfd_id, sha, message, author, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          input.rfdId,
+          input.nextHeadSha,
+          input.checkpointMessage,
+          input.authorName,
+          input.timestamp,
+        )
+        .run(),
+    );
+  }),
+  listHistory: Effect.fn("RfdCatalogStore.listHistory")(function* (rfdId) {
+    const result = yield* query("list checkpoint history", () =>
+      database
+        .prepare(
+          `SELECT sha, message, author, created_at
+           FROM rfd_checkpoint_history
+           WHERE rfd_id = ?
+           ORDER BY created_at DESC
+           LIMIT ?`,
+        )
+        .bind(rfdId, historyDepth)
+        .all(),
+    );
+    return yield* Effect.forEach(result.results, (row) => {
+      const record = row as {
+        readonly sha?: unknown;
+        readonly message?: unknown;
+        readonly author?: unknown;
+        readonly created_at?: unknown;
+      };
+      const createdAtMs =
+        typeof record.created_at === "number"
+          ? record.created_at
+          : typeof record.created_at === "string"
+            ? Number(record.created_at)
+            : Number.NaN;
+      return Schema.decodeUnknownEffect(RfdCheckpoint)({
+        sha: record.sha,
+        message: record.message,
+        author: record.author,
+        createdAt: Number.isFinite(createdAtMs)
+          ? new Date(createdAtMs).toISOString()
+          : record.created_at,
+      }).pipe(
+        Effect.mapError(
+          (cause) => new InvalidCatalogRecord({ query: "list checkpoint history", cause }),
+        ),
+      );
+    });
+  }),
+  replaceHistory: Effect.fn("RfdCatalogStore.replaceHistory")(function* (rfdId, checkpoints) {
+    const limited = checkpoints.slice(0, historyDepth);
+    yield* query("replace checkpoint history", () =>
+      database.batch([
+        database.prepare("DELETE FROM rfd_checkpoint_history WHERE rfd_id = ?").bind(rfdId),
+        ...limited.map((checkpoint) =>
+          database
+            .prepare(
+              `INSERT INTO rfd_checkpoint_history
+                (rfd_id, sha, message, author, created_at)
+               VALUES (?, ?, ?, ?, ?)`,
+            )
+            .bind(
+              rfdId,
+              checkpoint.sha,
+              checkpoint.message,
+              checkpoint.author,
+              new Date(checkpoint.createdAt).getTime(),
+            ),
+        ),
+      ]),
+    );
   }),
   getRoomRole: Effect.fn("RfdCatalogStore.getRoomRole")(function* (rfdId, userId) {
     const row = yield* query("get RFD room role", () =>

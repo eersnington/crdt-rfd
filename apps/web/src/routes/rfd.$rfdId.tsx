@@ -293,10 +293,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
               className={actionButtonClass}
               onPointerEnter={prefetchHistory}
               onFocus={prefetchHistory}
-              onClick={() => {
-                prefetchHistory();
-                setHistoryOpen(true);
-              }}
+              onClick={() => setHistoryOpen(true)}
             >
               <ClockCounterClockwiseIcon aria-hidden="true" />
               History
@@ -455,8 +452,7 @@ function HistoryPrefetch({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   const prefetchHistory = useAtomRefresh(rfdHistoryAtom(rfdId));
 
   useMountEffect(() => {
-    const timer = window.setTimeout(prefetchHistory, 500);
-    return () => window.clearTimeout(timer);
+    prefetchHistory();
   });
 
   return null;
@@ -480,11 +476,6 @@ function RfdHistory({
   readonly onClose: () => void;
   readonly onSelect: (sha: CommitSha) => void;
 }) {
-  const history = useAtomValue(rfdHistoryAtom(rfdId));
-  const earlier = AsyncResult.isSuccess(history)
-    ? history.value.filter((checkpoint) => checkpoint.sha !== latest.sha)
-    : [];
-
   return (
     <Drawer open direction="right" onOpenChange={(open) => (open ? undefined : onClose())}>
       <DrawerContent aria-label="RFD history">
@@ -514,31 +505,93 @@ function RfdHistory({
                 onClick={() => onSelect(latest.sha)}
               />
             </li>
-            {AsyncResult.isFailure(history) ? (
-              <li className="pt-6 text-sm text-destructive">
-                History could not be loaded. Try again shortly.
-              </li>
-            ) : !AsyncResult.isSuccess(history) ? (
-              <li className="py-4 text-sm text-muted-foreground">Loading earlier checkpoints…</li>
-            ) : (
-              earlier.map((checkpoint) => (
-                <li key={checkpoint.sha}>
-                  <CheckpointRow
-                    message={checkpoint.message}
-                    author={checkpoint.author}
-                    when={checkpoint.createdAt}
-                    sha={checkpoint.sha}
-                    isViewing={viewingSha === checkpoint.sha}
-                    onClick={() => onSelect(checkpoint.sha)}
-                  />
-                </li>
-              ))
-            )}
+            <Suspense
+              fallback={
+                <li className="py-4 text-sm text-muted-foreground">Loading earlier checkpoints…</li>
+              }
+            >
+              <EarlierCheckpoints
+                rfdId={rfdId}
+                latestSha={latest.sha}
+                viewingSha={viewingSha}
+                onSelect={onSelect}
+              />
+            </Suspense>
           </ol>
         </div>
       </DrawerContent>
     </Drawer>
   );
+}
+
+function EarlierCheckpoints({
+  rfdId,
+  latestSha,
+  viewingSha,
+  onSelect,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly latestSha: CommitSha;
+  readonly viewingSha: CommitSha;
+  readonly onSelect: (sha: CommitSha) => void;
+}) {
+  const [readHistory, setReadHistory] = useState(false);
+
+  useMountEffect(() => {
+    setReadHistory(true);
+  });
+
+  if (!readHistory) {
+    return <li className="py-4 text-sm text-muted-foreground">Loading earlier checkpoints…</li>;
+  }
+
+  return (
+    <LoadedEarlierCheckpoints
+      rfdId={rfdId}
+      latestSha={latestSha}
+      viewingSha={viewingSha}
+      onSelect={onSelect}
+    />
+  );
+}
+
+function LoadedEarlierCheckpoints({
+  rfdId,
+  latestSha,
+  viewingSha,
+  onSelect,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly latestSha: CommitSha;
+  readonly viewingSha: CommitSha;
+  readonly onSelect: (sha: CommitSha) => void;
+}) {
+  const history = useAtomValue(rfdHistoryAtom(rfdId));
+  if (AsyncResult.isFailure(history)) {
+    return (
+      <li className="pt-6 text-sm text-destructive">
+        History could not be loaded. Try again shortly.
+      </li>
+    );
+  }
+  if (!AsyncResult.isSuccess(history)) {
+    return <li className="py-4 text-sm text-muted-foreground">Loading earlier checkpoints…</li>;
+  }
+
+  return history.value
+    .filter((checkpoint) => checkpoint.sha !== latestSha)
+    .map((checkpoint) => (
+      <li key={checkpoint.sha}>
+        <CheckpointRow
+          message={checkpoint.message}
+          author={checkpoint.author}
+          when={checkpoint.createdAt}
+          sha={checkpoint.sha}
+          isViewing={viewingSha === checkpoint.sha}
+          onClick={() => onSelect(checkpoint.sha)}
+        />
+      </li>
+    ));
 }
 
 function CheckpointRow({
@@ -650,10 +703,7 @@ function HistoricalRfdDocument({
                 className={actionButtonClass}
                 onPointerEnter={prefetchHistory}
                 onFocus={prefetchHistory}
-                onClick={() => {
-                  prefetchHistory();
-                  setHistoryOpen(true);
-                }}
+                onClick={() => setHistoryOpen(true)}
               >
                 <ClockCounterClockwiseIcon aria-hidden="true" />
                 History
