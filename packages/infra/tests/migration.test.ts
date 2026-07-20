@@ -13,6 +13,7 @@ const rfdMigrations = [
   "0004_editor_roles.sql",
   "0005_checkpoint_message.sql",
   "0006_rfd_checkpoint_history.sql",
+  "0007_rfd_checkpoint_source.sql",
 ].map((name) =>
   readFileSync(fileURLToPath(new URL(`../migrations/${name}`, import.meta.url)), "utf8"),
 );
@@ -56,6 +57,10 @@ describe("foundation migration", () => {
     expect(
       database.prepare("SELECT message FROM rfd_checkpoint_history WHERE rfd_id = 'r1'").get(),
     ).toEqual({ message: "Create RFD" });
+    database.exec(rfdMigrations.at(5) ?? "");
+    expect(
+      database.prepare("SELECT source FROM rfd_checkpoint_history WHERE rfd_id = 'r1'").get(),
+    ).toEqual({ source: null });
   });
   it("applies Better Auth and application tables from zero", () => {
     const database = setup();

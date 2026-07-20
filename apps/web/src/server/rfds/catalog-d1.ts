@@ -127,6 +127,15 @@ export interface RfdCatalogStoreShape {
     readonly headSha: CommitShaValue;
     readonly checkpointMessage: string;
   }) => Effect.Effect<void, CatalogQueryFailed>;
+  readonly getCheckpointSource: (input: {
+    readonly rfdId: RfdIdValue;
+    readonly sha: CommitShaValue;
+  }) => Effect.Effect<string | null, CatalogQueryFailed>;
+  readonly cacheCheckpointSource: (input: {
+    readonly rfdId: RfdIdValue;
+    readonly sha: CommitShaValue;
+    readonly source: string;
+  }) => Effect.Effect<void, CatalogQueryFailed>;
   readonly commitCheckpoint: (input: {
     readonly rfdId: RfdIdValue;
     readonly expectedHeadSha: CommitShaValue;
@@ -304,8 +313,8 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
         database
           .prepare(
             `INSERT OR IGNORE INTO rfd_checkpoint_history
-              (rfd_id, sha, message, author, created_at)
-             VALUES (?, ?, ?, ?, ?)`,
+              (rfd_id, sha, message, author, created_at, source)
+             VALUES (?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             record.rfdId,
@@ -313,6 +322,7 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
             checkpointMessage,
             record.authorName,
             record.timestamp,
+            record.committedSource,
           ),
       ]),
     );
@@ -330,6 +340,22 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
       database
         .prepare("UPDATE rfd_catalog SET checkpoint_message = ? WHERE rfd_id = ? AND head_sha = ?")
         .bind(input.checkpointMessage, input.rfdId, input.headSha)
+        .run(),
+    ).pipe(Effect.asVoid),
+  ),
+  getCheckpointSource: Effect.fn("RfdCatalogStore.getCheckpointSource")((input) =>
+    query("get checkpoint source", () =>
+      database
+        .prepare("SELECT source FROM rfd_checkpoint_history WHERE rfd_id = ? AND sha = ?")
+        .bind(input.rfdId, input.sha)
+        .first<{ readonly source: string | null }>(),
+    ).pipe(Effect.map((row) => row?.source ?? null)),
+  ),
+  cacheCheckpointSource: Effect.fn("RfdCatalogStore.cacheCheckpointSource")((input) =>
+    query("cache checkpoint source", () =>
+      database
+        .prepare("UPDATE rfd_checkpoint_history SET source = ? WHERE rfd_id = ? AND sha = ?")
+        .bind(input.source, input.rfdId, input.sha)
         .run(),
     ).pipe(Effect.asVoid),
   ),
@@ -363,8 +389,8 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
       database
         .prepare(
           `INSERT OR IGNORE INTO rfd_checkpoint_history
-            (rfd_id, sha, message, author, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+            (rfd_id, sha, message, author, created_at, source)
+           VALUES (?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           input.rfdId,
@@ -372,6 +398,7 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
           input.checkpointMessage,
           input.authorName,
           input.timestamp,
+          input.committedSource,
         )
         .run(),
     );
@@ -419,14 +446,17 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
   replaceHistory: Effect.fn("RfdCatalogStore.replaceHistory")(function* (rfdId, checkpoints) {
     const limited = checkpoints.slice(0, historyDepth);
     yield* query("replace checkpoint history", () =>
-      database.batch([
-        database.prepare("DELETE FROM rfd_checkpoint_history WHERE rfd_id = ?").bind(rfdId),
-        ...limited.map((checkpoint) =>
+      database.batch(
+        limited.map((checkpoint) =>
           database
             .prepare(
               `INSERT INTO rfd_checkpoint_history
                 (rfd_id, sha, message, author, created_at)
-               VALUES (?, ?, ?, ?, ?)`,
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(rfd_id, sha) DO UPDATE SET
+                 message = excluded.message,
+                 author = excluded.author,
+                 created_at = excluded.created_at`,
             )
             .bind(
               rfdId,
@@ -436,7 +466,7 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
               new Date(checkpoint.createdAt).getTime(),
             ),
         ),
-      ]),
+      ),
     );
   }),
   getRoomRole: Effect.fn("RfdCatalogStore.getRoomRole")(function* (rfdId, userId) {

@@ -582,16 +582,46 @@ function LoadedEarlierCheckpoints({
     .filter((checkpoint) => checkpoint.sha !== latestSha)
     .map((checkpoint) => (
       <li key={checkpoint.sha}>
-        <CheckpointRow
-          message={checkpoint.message}
-          author={checkpoint.author}
-          when={checkpoint.createdAt}
-          sha={checkpoint.sha}
+        <HistoricalCheckpointRow
+          rfdId={rfdId}
+          checkpoint={checkpoint}
           isViewing={viewingSha === checkpoint.sha}
-          onClick={() => onSelect(checkpoint.sha)}
+          onSelect={onSelect}
         />
       </li>
     ));
+}
+
+function HistoricalCheckpointRow({
+  rfdId,
+  checkpoint,
+  isViewing,
+  onSelect,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly checkpoint: {
+    readonly sha: CommitSha;
+    readonly message: string;
+    readonly author: string;
+    readonly createdAt: string;
+  };
+  readonly isViewing: boolean;
+  readonly onSelect: (sha: CommitSha) => void;
+}) {
+  const prefetch = useAtomRefresh(rfdRefAtom({ rfdId, sha: checkpoint.sha }));
+
+  return (
+    <CheckpointRow
+      message={checkpoint.message}
+      author={checkpoint.author}
+      when={checkpoint.createdAt}
+      sha={checkpoint.sha}
+      isViewing={isViewing}
+      onPointerEnter={prefetch}
+      onFocus={prefetch}
+      onClick={() => onSelect(checkpoint.sha)}
+    />
+  );
 }
 
 function CheckpointRow({
@@ -601,6 +631,8 @@ function CheckpointRow({
   sha,
   isLatest = false,
   isViewing = false,
+  onPointerEnter,
+  onFocus,
   onClick,
 }: {
   readonly message: string;
@@ -609,12 +641,16 @@ function CheckpointRow({
   readonly sha: CommitSha;
   readonly isLatest?: boolean;
   readonly isViewing?: boolean;
+  readonly onPointerEnter?: () => void;
+  readonly onFocus?: () => void;
   readonly onClick: () => void;
 }) {
   return (
     <button
       type="button"
       className="block w-full py-4 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent/50"
+      onPointerEnter={onPointerEnter}
+      onFocus={onFocus}
       onClick={onClick}
       aria-current={isViewing ? "true" : undefined}
     >

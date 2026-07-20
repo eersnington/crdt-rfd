@@ -362,6 +362,15 @@ const RfdRepositoryLayer = Layer.effect(
         );
       if (record === null)
         return yield* failed("read RFD ref", `RFD ${input.rfdId} was not found.`);
+      const checkpointSha = input.ref.sha;
+      const cachedHistory = yield* catalog
+        .listHistory(input.rfdId)
+        .pipe(
+          Effect.mapError(() =>
+            failed("read RFD ref", "The RFD history cache could not be loaded."),
+          ),
+        );
+      const cachedCheckpoint = cachedHistory.find((entry) => entry.sha === checkpointSha);
       const token = yield* artifacts
         .createToken(record.artifactRepoName, "read")
         .pipe(
@@ -369,25 +378,67 @@ const RfdRepositoryLayer = Layer.effect(
             failed("read RFD ref", "A repository token could not be issued for this checkpoint."),
           ),
         );
-      const [checkout, history] = yield* Effect.all(
-        [
-          git.readCheckpoint({ remote: record.artifactRemote, token, sha: input.ref.sha }),
-          git.history({ remote: record.artifactRemote, token }),
-        ],
-        { concurrency: "unbounded" },
-      ).pipe(
-        Effect.mapError(() =>
-          failed("read RFD ref", "This checkpoint could not be loaded from Git history."),
-        ),
-      );
-      const checkpointSha = input.ref.sha;
-      const checkpoint = history.find((entry) => entry.sha === checkpointSha);
+      const checkpoint =
+        cachedCheckpoint ??
+        (yield* git.history({ remote: record.artifactRemote, token }).pipe(
+          Effect.tap((history) =>
+            catalog.replaceHistory(input.rfdId, history).pipe(
+              Effect.tapError(
+                logFailure("RfdRepository.getRef history cache write failed", {
+                  rfdId: input.rfdId,
+                }),
+              ),
+              Effect.ignore,
+            ),
+          ),
+          Effect.map((history) => history.find((entry) => entry.sha === checkpointSha)),
+          Effect.mapError(() =>
+            failed("read RFD ref", "This checkpoint could not be loaded from Git history."),
+          ),
+        ));
       if (checkpoint === undefined) {
         return yield* failed(
           "read RFD ref",
           "This checkpoint is no longer reachable from the RFD history.",
         );
       }
+      const cachedSource = yield* catalog
+        .getCheckpointSource({
+          rfdId: input.rfdId,
+          sha: checkpointSha,
+        })
+        .pipe(
+          Effect.mapError(() =>
+            failed("read RFD ref", "The checkpoint cache could not be loaded."),
+          ),
+        );
+      const checkout =
+        cachedSource === null
+          ? yield* git
+              .readCheckpoint({ remote: record.artifactRemote, token, sha: checkpointSha })
+              .pipe(
+                Effect.tap((loaded) =>
+                  catalog
+                    .cacheCheckpointSource({
+                      rfdId: input.rfdId,
+                      sha: checkpointSha,
+                      source: loaded.source,
+                    })
+                    .pipe(
+                      Effect.tapError(
+                        logFailure("RfdRepository.getRef checkpoint cache write failed", {
+                          rfdId: input.rfdId,
+                          sha: checkpointSha,
+                        }),
+                      ),
+                      Effect.ignore,
+                    ),
+                ),
+                Effect.mapError(() =>
+                  failed("read RFD ref", "This checkpoint could not be loaded from Git history."),
+                ),
+              )
+          : { source: cachedSource, headSha: checkpointSha };
       const parsed = yield* Effect.fromResult(parseRfdDocument(checkout.source)).pipe(
         Effect.mapError((error) => failed("read RFD ref", error.message)),
       );

@@ -53,6 +53,7 @@ describe("RfdCatalogStore checkpoint", () => {
       "Clarify edit semantics",
       "Ada Lovelace",
       1,
+      input.committedSource,
     ]);
   });
 
