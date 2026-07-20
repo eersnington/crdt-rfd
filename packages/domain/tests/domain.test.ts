@@ -1,13 +1,18 @@
 import { Result, Schema, SchemaParser } from "effect";
 import fc from "fast-check";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, expectTypeOf, it } from "vite-plus/test";
 import {
   BranchName,
   CommentAnchor,
   CommitSha,
+  GitRef,
   Permission,
+  Proposal,
   RfdPath,
   RfdStatus,
+  type RfdId,
+  type UserId,
+  WorkspaceId,
   canTransitionRfdStatus,
   hasPermission,
   parseRfdDocument,
@@ -35,6 +40,22 @@ related:
 `;
 
 describe("Git and identifier values", () => {
+  it("keeps identifier brands nominally distinct", () => {
+    expectTypeOf<UserId>().not.toEqualTypeOf<WorkspaceId>();
+    expectTypeOf<UserId>().not.toEqualTypeOf<RfdId>();
+  });
+
+  it("accepts generated identifiers and rejects malformed boundaries", () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/), (identifier) => {
+        expect(Result.isSuccess(decode(WorkspaceId, identifier))).toBe(true);
+      }),
+    );
+    for (const identifier of ["", "-leading", "has:colon", `a${"b".repeat(128)}`]) {
+      expect(Result.isFailure(decode(WorkspaceId, identifier))).toBe(true);
+    }
+  });
+
   it("accepts generated safe branch names", () =>
     fc.assert(
       fc.property(
@@ -49,6 +70,14 @@ describe("Git and identifier values", () => {
     for (const branch of ["", "/main", "main/", "a//b", "a..b", "topic.lock", "a b", "a@{b"]) {
       expect(Result.isFailure(decode(BranchName, branch))).toBe(true);
     }
+    for (const ref of [
+      "refs/heads/a..b",
+      "refs/heads/topic.lock",
+      "refs/heads/a/../b",
+      "refs/heads/a\u0000b",
+    ]) {
+      expect(Result.isFailure(decode(GitRef, ref))).toBe(true);
+    }
     for (const path of [
       "/rfd/1.md",
       "../1.md",
@@ -56,6 +85,8 @@ describe("Git and identifier values", () => {
       "rfd\\1.md",
       "rfd/1.txt",
       "rfd//1.md",
+      "rfd/a\u0000b.md",
+      "rfd/a b.md",
     ]) {
       expect(Result.isFailure(decode(RfdPath, path))).toBe(true);
     }
@@ -140,6 +171,14 @@ describe("frontmatter", () => {
       expect(Result.isFailure(parseRfdDocument(source))).toBe(true);
   });
 
+  it("rejects impossible calendar dates", () => {
+    for (const date of ["2026-00-01", "2026-02-29", "2026-13-01", "2026-04-31"]) {
+      expect(Result.isFailure(parseRfdDocument(validSource.replace("2026-07-12", date)))).toBe(
+        true,
+      );
+    }
+  });
+
   it("rejects duplicate numbers with a useful diagnostic", () => {
     const document = Result.getOrThrow(parseRfdDocument(validSource));
     const result = validateRfdCatalog([document, document]);
@@ -150,6 +189,36 @@ describe("frontmatter", () => {
 });
 
 describe("later contracts", () => {
+  it("rejects proposals with equal branches or incomplete failure details", () => {
+    const sha = "a".repeat(40);
+    const proposal = {
+      sourceBranch: "main",
+      sourceCommit: sha,
+      targetBranch: "main",
+      headCommit: sha,
+      source: { _tag: "Human", userId: "user_1" },
+      summary: "Revise storage",
+      status: "open",
+    };
+
+    expect(Result.isFailure(decode(Proposal, proposal))).toBe(true);
+    expect(
+      Result.isFailure(
+        decode(Proposal, { ...proposal, targetBranch: "proposal/storage", status: "failed" }),
+      ),
+    ).toBe(true);
+    expect(
+      Result.isSuccess(
+        decode(Proposal, {
+          ...proposal,
+          targetBranch: "proposal/storage",
+          status: "failed",
+          diagnostic: "The model request timed out.",
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it("validates both comment anchor variants", () => {
     const sha = "a".repeat(40);
     expect(Result.isSuccess(decode(CommitSha, sha))).toBe(true);

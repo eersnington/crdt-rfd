@@ -20,27 +20,35 @@ const transitions: Readonly<Record<RfdStatus, ReadonlySet<RfdStatus>>> = {
 export const canTransitionRfdStatus = (from: RfdStatus, to: RfdStatus): boolean =>
   transitions[from].has(to);
 
-export const ProposalStatus = Schema.Literals([
-  "generating",
-  "open",
-  "revising",
-  "merged",
-  "abandoned",
-  "failed",
-]);
-export const ProposalSource = Schema.Union([
-  Schema.Struct({ _tag: Schema.Literal("Human"), userId: UserId }),
-  Schema.Struct({ _tag: Schema.Literal("Agent"), model: Schema.String }),
-]);
-export const Proposal = Schema.Struct({
+export const ProposalSource = Schema.TaggedUnion({
+  Human: { userId: UserId },
+  Agent: { model: Schema.String },
+});
+
+const ProposalFields = {
   sourceBranch: BranchName,
   sourceCommit: CommitSha,
   targetBranch: BranchName,
   headCommit: CommitSha,
   source: ProposalSource,
   summary: Schema.String,
-  status: ProposalStatus,
-});
+};
+
+export const Proposal = Schema.Union([
+  Schema.Struct({
+    ...ProposalFields,
+    status: Schema.Literals(["generating", "open", "revising", "merged", "abandoned"]),
+  }),
+  Schema.Struct({
+    ...ProposalFields,
+    status: Schema.Literal("failed"),
+    diagnostic: Schema.String.check(Schema.isMinLength(1)),
+  }),
+]).check(
+  Schema.makeFilter((proposal) => proposal.sourceBranch !== proposal.targetBranch, {
+    expected: "sourceBranch and targetBranch to differ",
+  }),
+);
 
 export const MemoryType = Schema.Literals([
   "decision",
@@ -61,18 +69,16 @@ export const MemorySource = Schema.Struct({
   type: MemoryType,
 });
 
-export const CommentAnchor = Schema.Union([
-  Schema.Struct({
-    _tag: Schema.Literal("DocumentRange"),
+export const CommentAnchor = Schema.TaggedUnion({
+  DocumentRange: {
     branch: BranchName,
     start: Schema.Uint8Array,
     end: Schema.Uint8Array,
-  }),
-  Schema.Struct({
-    _tag: Schema.Literal("DiffLine"),
+  },
+  DiffLine: {
     baseSha: CommitSha,
     headSha: CommitSha,
     side: Schema.Literals(["base", "head"]),
     line: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
-  }),
-]);
+  },
+});

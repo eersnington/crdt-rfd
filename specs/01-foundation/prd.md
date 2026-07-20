@@ -1,5 +1,17 @@
 # Foundation PRD
 
+## Superseded assumptions
+
+This workstream is **complete**. Later product decisions supersede some original assumptions:
+
+- Committed storage is **one Artifacts repository per RFD**, not one monorepo for all RFDs.
+- Supermemory and AI keys are **user BYO**, not deployer-only configuration.
+- Agents include **MCP + Code Mode + Dynamic Workers** (workstream 06).
+- Roles target **owner / editor / commenter** (migrate from author / coauthor / reviewer when implementing access).
+- There is **no release polish workstream**.
+
+Keep this PRD as the historical record of foundation deliverables. See `specs/index.md` for the current product model.
+
 ## Goal
 
 Establish the Alchemy v2 deployment package, shared domain contracts, D1 schema, GitHub authentication, and authorization boundaries required by every later workstream.
@@ -16,10 +28,14 @@ None. This workstream is the base of the stack.
 - Install Alchemy v2, Effect v4, and the required Bun and Node platform packages.
 - Add root scripts that delegate infrastructure commands to `packages/infra`.
 - Add `packages/infra/alchemy.run.ts` as the composition root.
-- The first stack revision must declare exactly one Cloudflare R2 bucket and no Worker.
-- Ask for confirmation before `bun alchemy deploy`.
-- Record the confirmed deployment in `specs/progress.md` and this workstream's progress file.
-- Stop after confirming that the bucket is live. Add the application resources in a later change.
+- Keep application env files under `apps/web` and select `.env` or `.env.production` explicitly
+  from the corresponding Alchemy command.
+- Verify the R2 bucket, D1 database, and Website resource through local Alchemy development and
+  production deployment.
+- Derive the Website custom domain from `APP_ORIGIN` rather than hard-coding deployment-specific
+  hostnames.
+- Serve Vite client assets before the TanStack Start Worker while preserving Worker handling for
+  application routes.
 
 The R2 bucket validates Alchemy setup only. It is not the Artifacts repository backend.
 
@@ -48,7 +64,7 @@ Do not add speculative compatibility fields. Illegal states should use discrimin
 
 ### D1 foundation
 
-After the required first deploy is complete, add D1 through Alchemy and create migrations for:
+Add D1 through Alchemy and create migrations for:
 
 ```text
 users
@@ -69,8 +85,9 @@ Required constraints:
 - Implement GitHub OAuth with state and PKCE.
 - Use secure, HTTP-only, same-site cookies.
 - Rotate the session after login and privilege changes.
-- Keep OAuth provider calls behind an `IdentityProvider` Effect service.
-- Keep session persistence behind a `SessionStore` Effect service.
+- Keep Better Auth construction behind one Effect service boundary. Better Auth owns the GitHub
+  provider flow and session persistence internals; application code consumes a separate current-session
+  projection rather than depending on Better Auth's response shape.
 - Do not make GitHub repository access part of the requested OAuth scope.
 
 ### Authorization
@@ -124,8 +141,11 @@ Avoid editing Artifacts, editor, comments, or proposal implementation files in t
 
 ## Acceptance criteria
 
-- `packages/infra` can plan the initial one-bucket stack.
-- The first deploy is run only after explicit confirmation and the bucket is verified live.
+- `packages/infra` starts the R2, D1, and Website resources in Alchemy development.
+- Development and production commands load their corresponding env files from `apps/web`.
+- Production deployment binds the Website to the hostname from `APP_ORIGIN`.
+- Production HTML, CSS, and JavaScript assets return successful responses with the expected content
+  types.
 - Domain schemas compile without importing Cloudflare runtime types.
 - D1 migrations apply cleanly from zero.
 - GitHub login creates or reconnects a user without requesting repository scopes.

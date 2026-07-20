@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-const id = (name: string) =>
+const id = <const Name extends string>(name: Name) =>
   Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)).pipe(
     Schema.brand(name),
   );
@@ -32,18 +32,22 @@ export const BranchName = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(255),
   Schema.isPattern(
-    /^(?!\/)(?!.*\/$)(?!.*\/\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\.\.)(?!.*@\{)(?!.*\\)(?!.*[ ~^:?*[])(?!.*\.$)(?!.*\.lock(?:\/|$))[^/]+(?:\/[^/]+)*$/,
+    /^(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\.\.)(?!.*@\{)(?!.*\.$)(?!.*\.lock(?:\/|$))[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/,
   ),
 ).pipe(Schema.brand("BranchName"));
 export type BranchName = typeof BranchName.Type;
 
 export const GitRef = Schema.String.check(
-  Schema.isPattern(/^refs\/(?:heads|tags)\/[A-Za-z0-9][A-Za-z0-9._/-]*$/),
+  Schema.isMaxLength(266),
+  Schema.isPattern(
+    /^refs\/(?:heads|tags)\/(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\.\.)(?!.*@\{)(?!.*\.$)(?!.*\.lock(?:\/|$))[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/,
+  ),
 ).pipe(Schema.brand("GitRef"));
 export type GitRef = typeof GitRef.Type;
 
 export const RfdPath = Schema.String.check(
+  Schema.isMinLength(1),
   Schema.isMaxLength(1024),
-  Schema.isPattern(/^(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\/\/)[^/]+(?:\/[^/]+)*\.md$/),
+  Schema.isPattern(/^(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.md$/),
 ).pipe(Schema.brand("RfdPath"));
 export type RfdPath = typeof RfdPath.Type;

@@ -2,7 +2,7 @@
 
 ## Project layout
 
-Infrastructure lives in `packages/infra` and is composed with Alchemy v2. The workspace root exposes convenience scripts that invoke the package without moving deployment dependencies into the web application.
+Infrastructure lives in `packages/infra` and is composed with Alchemy v2.
 
 ```text
 apps/
@@ -10,120 +10,114 @@ apps/
 packages/
   domain/
   infra/
-  repository/
-  memory/
-  proposals/
+  repository/   # Artifacts + git operations (when split)
+  memory/       # user Supermemory adapter (when split)
+  agents/       # MCP + Code Mode (when split)
 ```
 
-The exact package split can remain smaller until code requires independent ownership. `alchemy.run.ts` is the composition root.
+The exact package split can stay smaller until code requires independent ownership. `alchemy.run.ts` is the composition root.
 
-## Initial Alchemy deployment
+## Current foundation (done)
 
-The first infrastructure change follows Alchemy's onboarding sequence exactly:
+Already deployed and wired:
 
-1. Create the isolated `packages/infra` package.
-2. Install Alchemy v2, Effect, and platform dependencies.
-3. Declare one Cloudflare R2 bucket and no Worker.
-4. Ask for confirmation.
-5. Run `bun alchemy deploy` and complete the Cloudflare profile login.
-6. Confirm the bucket is live.
-7. Stop before adding further resources.
+- D1 database + foundation migrations (Better Auth, memberships, workspace_settings historical)
+- Website (TanStack Start) with env bindings for auth
+- R2 bucket as Alchemy onboarding probe (not product storage for RFD bodies)
 
-The bucket validates Alchemy setup. It is not the Git repository backend. Cloudflare Artifacts remains the only durable store for committed RFD files.
+## Application stack (target)
 
-## Application stack
+Add as workstreams require:
 
-After the initial deployment, the stack adds:
-
-- Cloudflare Website Vite resource for TanStack Start
-- D1 database and migrations
-- RFD branch Durable Object class
-- Cloudflare Artifacts namespace binding
-- Workers AI binding when deployer-funded AI is enabled
-- Queues or event consumers for indexing and Artifacts push events
-- Worker secrets or Secrets Store bindings
-- Stage-specific configuration
-
-## TanStack Start deployment
-
-The Website resource builds `apps/web` and binds infrastructure into the server Worker. It uses `nodejs_compat` and routes server requests before static assets.
-
-Server modules access bindings through a deferred environment proxy so TanStack Start development does not read `cloudflare:workers` bindings outside a request context.
+- Cloudflare Artifacts namespace binding (`ARTIFACTS`)
+- RFD document-room Durable Object class
+- Worker Loader binding (`LOADER`) for Dynamic Workers / Code Mode
+- Optional Queues + Artifacts event subscriptions for `pushed` / `forked` automation
+- Worker secrets or Secrets Store for encryption keys (user credential encryption)
 
 ## Artifacts integration
 
-The stack declares the Artifacts namespace binding. The repository is created or recovered by an authenticated bootstrap operation, then recorded as workspace configuration.
+```text
+[[artifacts]]
+binding = "ARTIFACTS"
+namespace = "<stage>"   # e.g. default | dev | prod
+```
 
-`env.ARTIFACTS` handles repository lookup and short-lived token creation. Transient `isomorphic-git` operations create and push commits to the Artifacts remote. The transient filesystem is discarded after each operation and is not a storage layer.
+- Namespace is deployment-scoped (environment or single default).
+- Repositories are created per RFD: `rfd-{rfdId}`.
+- Use binding for create/get/fork/tokens/log.
+- Use isomorphic-git for file content commit/push.
+- Local dev may need remote Artifacts (`remote = true` where supported) after Wrangler auth.
+- Artifacts is closed beta; access must be obtained for live integration.
 
-Repository operations should minimize Worker memory:
+Operational limits to design around:
 
-- Fetch the required branch only.
-- Use shallow history when the operation permits it.
-- Materialize only relevant files.
-- Push against an expected parent.
-- Enforce document and diff size limits.
+- 10 GB maximum storage per repository
+- 2,000 control-plane requests / 10s per namespace
+- 2,000 Git requests / 10s per artifact
 
 ## Durable Objects
 
-One namespace hosts RFD branch objects. Object names derive from a canonical encoded tuple of workspace, RFD, and branch.
+One namespace hosts RFD document rooms. Object name derives from `rfdId`.
 
 SQLite-backed storage contains:
 
-- Yjs snapshots
+- Yjs snapshots (chunked before row BLOB limits)
 - Incremental Yjs updates awaiting compaction
 - Base commit SHA
 - Room status
 - Schema version
 
-Snapshots must be chunked before they approach the per-row BLOB limit. Alarms can trigger idle checkpoints and compaction.
+Alarms can trigger idle checkpoints and compaction later.
+
+Code Mode durable runtime uses a CodemodeRuntime facet (via `@cloudflare/codemode` + Vite plugin export). Keep agent runtime storage separate from the document room when both exist.
+
+## Worker Loader
+
+```text
+[[worker_loaders]]
+binding = "LOADER"
+```
+
+Required for `DynamicWorkerExecutor`. Sandbox policy:
+
+- Default `globalOutbound: null` (no open internet)
+- Inject only capability stubs (connector RPC), never raw secrets
+- Timeouts and custom limits as needed
 
 ## D1
 
-D1 migrations cover:
+Extend migrations beyond foundation for:
 
-- `users`
-- `sessions`
-- `oauth_accounts`
-- `rfd_memberships`
-- `comment_threads`
-- `comment_replies`
-- `proposals`
-- `artifact_events`
-- `usage_quotas`
-- `user_provider_credentials`
-
-Migrations are versioned and applied by the infrastructure stack. Database rows reference Git SHAs and RFD IDs rather than duplicating committed Markdown.
-
-## Memory configuration
-
-```ts
-type MemoryConfig =
-  | { _tag: "Disabled" }
-  | { _tag: "SupermemoryHosted"; apiKey: SecretRef }
-  | { _tag: "SupermemorySelfHosted"; baseUrl: URL; apiKey: SecretRef }
+```text
+rfd_catalog              # public list + artifact name + head + fork lineage
+rfd_memberships          # owner | editor | commenter (migrate from older roles)
+comment_threads
+comment_replies
+user_memory_config
+user_ai_credentials      # encrypted
+user_rfd_interactions
+artifact_events          # idempotency if using push events
 ```
 
-The selected configuration builds one `Memory` Effect layer. Hosted mode uses the fixed Supermemory API origin. Self-hosted production mode requires a deployer-configured endpoint reachable by the Worker. Local development permits a loopback endpoint.
+Rows reference artifact names and SHAs; they do not replace Git history.
 
-## AI configuration
+## Memory configuration (user)
 
-```ts
-type AiFundingPolicy =
-  | { _tag: "DeployerOnly" }
-  | { _tag: "UserOnly" }
-  | { _tag: "DeployerOrUser"; default: "deployer" | "user" }
-```
+No deploy-time single Supermemory key for all users as the product default. Each user stores:
 
-Deployer-funded generation uses `env.AI`. User-funded generation calls the Cloudflare Workers AI REST endpoint with a user account ID and scoped token. Model names come from a deployment allowlist.
+- Off | Hosted API key | Self-hosted base URL + API key
+
+Hosted default origin: Supermemory cloud API. Self-hosted uses the same SDK with `baseURL`.
+
+## AI configuration (user)
+
+Users supply credentials for an allowlisted provider. Encrypt at rest. Decrypt only for outbound model calls on the host Worker.
 
 ## Stages
 
-- Local development uses `alchemy dev`, remote Artifacts when required, local D1/DO behavior where supported, and optional local Supermemory.
-- Preview stages use isolated D1 and Durable Object resources and must not index production memories.
-- Production uses stable resource names and explicit deployment approval.
-
-No deployment runs without confirmation. Alchemy profiles manage Cloudflare credentials; the project does not require users to export account ID or API token environment variables for Alchemy.
+- Local: `alchemy dev`, local D1/DO where supported, remote Artifacts when required, optional local Supermemory (`baseURL` loopback).
+- Production: stable resource names; Artifacts namespace separate from dev if needed for rate isolation.
 
 ## Observability
 
@@ -131,9 +125,10 @@ Record structured events for:
 
 - WebSocket connections and recovery
 - Checkpoint duration and result
-- Artifacts pushes and conflicts
-- Supermemory indexing latency and failures
-- Proposal generation provider, model, duration, and token usage
-- Quota denials
+- Artifacts create/fork/push failures
+- Supermemory index and search latency
+- Chat provider errors (no bodies/secrets)
+- Code Mode execution status (completed / paused / error)
+- MCP auth failures
 
-Logs contain operation IDs, workspace IDs, RFD IDs, branches, and commit SHAs. They never contain document bodies, OAuth tokens, repository tokens, Supermemory keys, or user AI tokens.
+Logs may include operation IDs, user IDs, RFD IDs, artifact names, and commit SHAs. Never log document bodies, OAuth tokens, Artifacts tokens, Supermemory keys, or user AI tokens.

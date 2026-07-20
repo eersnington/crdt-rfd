@@ -2,7 +2,24 @@ export interface AuthHandler {
   readonly handler: (request: Request) => Response | Promise<Response>;
 }
 
+const unsupportedSessionPaths = new Set([
+  "/api/auth/list-sessions",
+  "/api/auth/revoke-session",
+  "/api/auth/revoke-other-sessions",
+]);
+
 const handleAuthRequest = async (auth: AuthHandler, request: Request) => {
+  const path = new URL(request.url).pathname;
+  if (unsupportedSessionPaths.has(path)) {
+    return Response.json(
+      {
+        code: "SESSION_MANAGEMENT_UNAVAILABLE",
+        message:
+          "Per-session listing and revocation are unavailable while session tokens are stored as one-way digests. Sign out this session or revoke all sessions instead.",
+      },
+      { status: 501 },
+    );
+  }
   try {
     return await auth.handler(request);
   } catch (error) {

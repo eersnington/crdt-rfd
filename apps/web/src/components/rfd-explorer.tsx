@@ -1,9 +1,10 @@
 import { ArrowsDownUpIcon, MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import type { RfdStatus } from "@crdt-rfd/domain";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 
-import { stateDotClass, useRfdSearch } from "@/components/rfd-search";
+import { statusDotClass, useRfdSearch } from "@/components/rfd-search";
+import { statusLabels } from "@/lib/rfd-presentation";
 import { cn } from "@/lib/utils";
-import { stateLabels, type RfdState } from "@/lib/rfd-data";
 
 const dateFormat = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -12,17 +13,25 @@ const dateFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 
-const filterKindLabel = { states: "State", authors: "Author", labels: "Label" } as const;
+const filterKindLabel = { statuses: "Status", authors: "Author", labels: "Label" } as const;
 
 export function RfdExplorer() {
-  const { setOpen, filters, toggle, clear, activeCount, results } = useRfdSearch();
-  const [sortDescending, setSortDescending] = useState(true);
-  const sorted = sortDescending ? results : [...results].reverse();
+  const {
+    setOpen,
+    filters,
+    toggle,
+    clear,
+    activeCount,
+    catalog,
+    sortedResults: sorted,
+    sortDescending,
+    setSortDescending,
+  } = useRfdSearch();
   const chips = [
-    ...Array.from(filters.states).map((value) => ({
-      kind: "states" as const,
+    ...Array.from(filters.statuses).map((value) => ({
+      kind: "statuses" as const,
       value,
-      label: stateLabels[value as RfdState],
+      label: statusLabels[value as RfdStatus],
     })),
     ...Array.from(filters.authors).map((value) => ({
       kind: "authors" as const,
@@ -68,7 +77,7 @@ export function RfdExplorer() {
             className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase hover:text-foreground"
           >
             <ArrowsDownUpIcon size={14} aria-hidden="true" />
-            {sortDescending ? "All Time" : "Popular (24hrs)"}
+            {sortDescending ? "Newest" : "Oldest"}
           </button>
         </div>
 
@@ -78,7 +87,7 @@ export function RfdExplorer() {
               <button
                 key={`${chip.kind}:${chip.value}`}
                 type="button"
-                onClick={() => toggle(chip.kind, chip.value)}
+                onClick={() => toggle(chip)}
                 className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 py-1 pr-2 pl-3 font-mono text-xs text-primary"
               >
                 <span className="text-primary/60">{filterKindLabel[chip.kind]}</span>
@@ -93,6 +102,12 @@ export function RfdExplorer() {
             >
               Clear all
             </button>
+          </div>
+        ) : null}
+
+        {AsyncResult.isFailure(catalog) ? (
+          <div className="border-b py-8 text-sm text-destructive">
+            The RFD catalog could not be loaded. Refresh the page to try again.
           </div>
         ) : null}
 
@@ -115,10 +130,10 @@ export function RfdExplorer() {
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <span
-                        className={cn("size-2 rounded-full", stateDotClass[rfd.state])}
+                        className={cn("size-2 rounded-full", statusDotClass[rfd.status])}
                         aria-hidden="true"
                       />
-                      {stateLabels[rfd.state]}
+                      {statusLabels[rfd.status]}
                     </span>
                     <span>{rfd.author}</span>
                     {rfd.labels.map((label) => (

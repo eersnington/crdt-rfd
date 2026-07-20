@@ -63,4 +63,18 @@ describe("foundation migration", () => {
     database.exec("INSERT INTO rfd_memberships VALUES ('w1', 'r1', 'u2', 'author', 1, 1)");
     expect(() => database.exec("DELETE FROM rfd_memberships WHERE user_id = 'u1'")).not.toThrow();
   });
+
+  it("requires the first RFD membership to be an author", () => {
+    const database = setup();
+    expect(() =>
+      database.exec("INSERT INTO rfd_memberships VALUES ('w1', 'r1', 'u1', 'reviewer', 1, 1)"),
+    ).toThrow(/first RFD membership must be an author/);
+    database.exec("INSERT INTO rfd_memberships VALUES ('w1', 'r1', 'u1', 'author', 1, 1)");
+    expect(() =>
+      database.exec("INSERT INTO rfd_memberships VALUES ('w1', 'r1', 'u2', 'reviewer', 1, 1)"),
+    ).not.toThrow();
+    expect(() =>
+      database.exec("UPDATE rfd_memberships SET rfd_id = 'r2' WHERE user_id = 'u2'"),
+    ).toThrow(/cannot move to an RFD without an author/);
+  });
 });

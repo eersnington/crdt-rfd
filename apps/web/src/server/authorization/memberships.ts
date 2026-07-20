@@ -1,10 +1,14 @@
-import type { RfdRole, WorkspacePolicy } from "@crdt-rfd/domain";
-import { Context, Data, Effect, Layer, Ref } from "effect";
+import type { RfdId, RfdRole, UserId, WorkspaceId, WorkspacePolicy } from "@crdt-rfd/domain";
+import { Context, Effect, Layer, Schema } from "effect";
 
-export class MembershipStoreError extends Data.TaggedError("MembershipStoreError")<{
-  readonly operation: "load";
-  readonly message: string;
-}> {}
+export class MembershipStoreError extends Schema.TaggedErrorClass<MembershipStoreError>()(
+  "MembershipStoreError",
+  {
+    operation: Schema.Literal("load"),
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
 
 export interface AuthorizationMemberships {
   readonly workspaceOwner: boolean;
@@ -14,9 +18,9 @@ export interface AuthorizationMemberships {
 
 export interface MembershipStoreShape {
   readonly load: (input: {
-    readonly userId: string;
-    readonly workspaceId: string;
-    readonly rfdId?: string;
+    readonly userId: UserId;
+    readonly workspaceId: WorkspaceId;
+    readonly rfdId?: RfdId;
   }) => Effect.Effect<AuthorizationMemberships, MembershipStoreError>;
 }
 
@@ -24,30 +28,19 @@ export class MembershipStore extends Context.Service<MembershipStore, Membership
   "crdt-rfd/MembershipStore",
 ) {}
 
-export const loadAuthorizationMemberships = (input: {
-  readonly userId: string;
-  readonly workspaceId: string;
-  readonly rfdId?: string;
-}) => MembershipStore.use((store) => store.load(input));
-
 export const inMemoryMembershipStoreLayer = (
   entries: ReadonlyMap<string, AuthorizationMemberships>,
 ) =>
-  Layer.effect(
+  Layer.succeed(
     MembershipStore,
-    Effect.gen(function* () {
-      const values = yield* Ref.make(entries);
-      return {
-        load: ({ userId, workspaceId, rfdId }) =>
-          Ref.get(values).pipe(
-            Effect.map(
-              (map) =>
-                map.get(`${userId}:${workspaceId}:${rfdId ?? ""}`) ?? {
-                  workspaceOwner: false,
-                  policy: { reviewerCanMerge: false },
-                },
-            ),
-          ),
-      } satisfies MembershipStoreShape;
+    MembershipStore.of({
+      load: Effect.fn("MembershipStore.inMemory.load")(({ userId, workspaceId, rfdId }) =>
+        Effect.succeed(
+          entries.get(`${userId}:${workspaceId}:${rfdId ?? ""}`) ?? {
+            workspaceOwner: false,
+            policy: { reviewerCanMerge: false },
+          },
+        ),
+      ),
     }),
   );

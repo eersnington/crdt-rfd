@@ -1,142 +1,88 @@
 # Testing
 
-## Test layers
+## Principles
 
-### Domain tests
+- Prefer Effect-friendly unit tests for pure domain logic.
+- Use fakes for Effect services at application boundaries.
+- Use live Cloudflare tests only for isolated stages after confirmation.
+- Never assert on secrets or log secret material.
 
-Run fast Vitest tests for:
+## Domain and authorization
 
-- Frontmatter parsing and status transitions
-- Branded identifiers and branch-name validation
-- Permission decisions
-- Proposal state transitions
-- Comment anchor schemas
-- Provider configuration decoding
-- Tagged error mapping
+- Role permission matrix: owner, editor, commenter, public reader.
+- Comment policy anyone vs members-only.
+- Ownership transfer keeps at least one owner.
+- Frontmatter parse/serialize and status transitions.
+- Container tag and customId formats for memory provenance.
 
-Use fast-check for parsers, state transitions, branch names, path validation, and Markdown transformations.
+## Artifacts / repository service
 
-### Markdown compatibility tests
+Contract tests with a fake `RfdRepository`:
 
-Maintain fixture-based golden tests for every supported Markdown feature.
+- create RFD catalog + artifact name
+- read committed Markdown
+- checkpoint advances head
+- fork creates new id + new repo name + forkedFrom
+- mint read token; reject unauthorized write token mint
 
-```text
-Markdown fixture
-  -> parse into Tiptap/ProseMirror
-  -> serialize back to Markdown
-  -> parse both into normalized syntax trees
-  -> compare meaning and frontmatter
-```
+Live integration (isolated namespace/stage, confirmed):
 
-Unsupported syntax must produce an explicit result. Tests must detect silently dropped content.
+- `ARTIFACTS.create` + isomorphic-git initial push
+- `repo.fork`
+- `repo.log` history
+- token strip for `?expires=` Git auth
+- cleanup only self-created repos
 
-### Editor tests
+## Editor / CRDT
 
-Use jsdom for command and document-state tests. Use browser tests for `contentEditable`, selections, keyboard behavior, paste, comments, and accessibility.
+- Markdown golden fixtures for supported subset.
+- Unsupported syntax validation visibility.
+- Yjs multi-client convergence property tests where practical.
+- Room bootstrap from Artifact head.
+- Checkpoint from dirty room updates base SHA.
+- Conflicted state when remote advances under a dirty room (when events exist).
 
-Required cases include:
+## Comments
 
-- Metadata and body editing remain separate.
-- Save state changes from clean to dirty and back.
-- Reconnecting does not duplicate content.
-- Pasted unsupported content is normalized or rejected visibly.
+- Create thread, reply, resolve.
+- Relative position survival across concurrent inserts.
+- Outdated anchor when range cannot resolve.
+- Unauthorized comment rejected under members-only.
 
-### CRDT and Durable Object tests
+## Memory and chat
 
-Use Cloudflare's Vitest integration where possible.
+- Off mode: chat/index no-ops without breaking core app.
+- Hosted and self-hosted fake servers: add with containerTag + customId.
+- Search scoped to user container only.
+- Interaction gating: only interacted RFDs indexed for that user.
+- Credential encryption round-trip; no plaintext in logs.
 
-- Two clients make concurrent edits and converge.
-- Updates are idempotent and tolerate reordered delivery.
-- Server-side bootstrap runs once.
-- Durable Object eviction restores the same document.
-- WebSocket reconnect resynchronizes missed updates.
-- Awareness appears and expires without entering durable content.
-- Snapshot compaction preserves document state.
-- A deployment-style disconnect does not lose acknowledged edits.
-- Dirty rooms enter conflict state after an external push.
+## Agents
 
-### Artifacts integration tests
+- MCP tool authz mirrors HTTP/RPC authz.
+- MCP OAuth session maps to application user.
+- Code Mode connector calls host services, not raw bindings.
+- Approval pause/resume for a mutation tool.
+- Sandbox cannot read env secrets (negative test where feasible).
+- Error statuses returned as data, not uncaught throws through the model tool.
 
-Run tests against an isolated Artifacts repository and stage.
+## End-to-end MVP path
 
-- Create or recover the workspace repository.
-- Commit an RFD to main.
-- Read the file and history back.
-- Create and update a proposal branch.
-- Compare source and proposal.
-- Merge a clean proposal.
-- Reject a stale expected parent.
-- Clone with a short-lived read token.
-- Confirm expired and revoked tokens fail.
+1. Public list empty or fixture-free against real catalog.
+2. Sign in, create RFD, open editor.
+3. Second user invited as editor; co-edit; checkpoint.
+4. Comment as third user under `anyone` policy.
+5. Fork RFD; verify new owner and independent Artifact.
+6. Configure memory + AI (test doubles); interact; chat returns citation.
+7. Call MCP `get_rfd` / `list_rfds` as the user.
+8. Run one Code Mode plan that lists and summarizes via connectors.
 
-Integration tests clean up only repositories and stages they created.
+## Commands
 
-### D1 tests
+Use Vite+ toolchain:
 
-- Apply migrations from an empty database.
-- Create OAuth users and rotate sessions.
-- Enforce one or more authors per RFD.
-- Check role-based operations.
-- Create, reply to, resolve, and age comment anchors.
-- Deduplicate repeated Artifacts events.
-- Enforce quotas transactionally.
-- Encrypt and delete persistent user credentials when that option is enabled.
+- `vp check`
+- `vp test`
+- `vp run` scripts as defined in package manifests
 
-### Supermemory contract tests
-
-Run the same suite against fake, hosted-test, and self-hosted adapters where available.
-
-- Index a committed RFD with complete provenance.
-- Search within the configured workspace scope.
-- Exclude draft and proposal content.
-- Reindex a changed commit without losing history unexpectedly.
-- Surface provider failures as typed errors.
-- Rebuild from Artifacts.
-
-### Proposal model contract tests
-
-Run deterministic tests through a fake model layer and smoke tests against Workers AI.
-
-- Reject edits outside the allowed path.
-- Reject malformed frontmatter.
-- Reject oversized output.
-- Preserve source branch content.
-- Include cited memory provenance in the prompt.
-- Enforce deployer and user quotas.
-- Keep user-funded credentials out of logs and responses.
-
-### End-to-end tests
-
-Cover the MVP path in a real browser:
-
-1. Sign in through a test identity provider or controlled OAuth fixture.
-2. Create an RFD and become its author.
-3. Open it in two browser contexts.
-4. Make concurrent edits and observe presence.
-5. Checkpoint and verify the Artifacts commit.
-6. Create an AI proposal with retrieved memory context.
-7. Comment on its diff.
-8. Merge it and verify the public reader.
-9. Push an external Git change and verify clean reload or dirty conflict behavior.
-
-## Validation commands
-
-Run repository checks through Vite+:
-
-```sh
-vp check
-vp test
-vp run -r build
-```
-
-Infrastructure integration tests may deploy real Cloudflare resources. They require explicit confirmation and isolated stages.
-
-## Release gates
-
-- No supported Markdown fixture loses semantic content.
-- CRDT convergence and eviction recovery tests pass.
-- Artifacts checkpoint and stale-parent tests pass against Cloudflare.
-- Authorization tests cover every mutation endpoint.
-- Secret scanning and log-redaction tests pass.
-- The full public reader and editor paths pass desktop and mobile browser tests.
-- `vp check`, `vp test`, and required builds pass.
+Live Artifacts or production resources require explicit confirmation before create/destroy.
