@@ -11,6 +11,7 @@ const rfdMigrations = [
   "0002_rfd_catalog.sql",
   "0003_rfd_committed_source.sql",
   "0004_editor_roles.sql",
+  "0005_checkpoint_message.sql",
 ].map((name) =>
   readFileSync(fileURLToPath(new URL(`../migrations/${name}`, import.meta.url)), "utf8"),
 );
@@ -43,6 +44,10 @@ describe("foundation migration", () => {
       { user_id: "u1", role: "owner" },
       { user_id: "u2", role: "commenter" },
     ]);
+    database.exec(rfdMigrations.at(3) ?? "");
+    expect(
+      database.prepare("SELECT checkpoint_message FROM rfd_catalog WHERE rfd_id = 'r1'").get(),
+    ).toEqual({ checkpoint_message: null });
   });
   it("applies Better Auth and application tables from zero", () => {
     const database = setup();

@@ -243,6 +243,37 @@ const RfdRepositoryLayer = Layer.effect(
             )
           : { source: record.committedSource, headSha: record.headSha };
 
+      const checkpointMessage =
+        record.checkpointMessage ??
+        (yield* artifacts.createToken(record.artifactRepoName, "read").pipe(
+          Effect.flatMap((token) => git.history({ remote: record.artifactRemote, token })),
+          Effect.flatMap((history) =>
+            history[0] === undefined
+              ? Effect.fail(failed("read RFD", "The RFD repository has no checkpoint history."))
+              : Effect.succeed(history[0].message),
+          ),
+          Effect.tap((message) =>
+            catalog
+              .cacheCheckpointMessage({
+                rfdId,
+                headSha: checkout.headSha,
+                checkpointMessage: message,
+              })
+              .pipe(
+                Effect.tapError(
+                  logFailure("RfdRepository.get checkpoint message cache write failed", { rfdId }),
+                ),
+                Effect.ignore,
+              ),
+          ),
+          Effect.mapError(() =>
+            failed(
+              "read RFD checkpoint message",
+              "The latest checkpoint message could not be loaded. Refresh the page to try again.",
+            ),
+          ),
+        ));
+
       const parsed = yield* Effect.fromResult(parseRfdDocument(checkout.source)).pipe(
         Effect.mapError((error) => failed("read RFD", error.message)),
       );
@@ -255,6 +286,7 @@ const RfdRepositoryLayer = Layer.effect(
         updated: record.updated,
         body: parsed.body,
         headSha: checkout.headSha,
+        checkpointMessage,
       }).pipe(
         Effect.mapError(() =>
           failed("read RFD", "The committed RFD metadata is invalid and could not be displayed."),
@@ -337,6 +369,7 @@ const RfdRepositoryLayer = Layer.effect(
         });
       }
       const timestamp = yield* Clock.currentTimeMillis;
+      const checkpointMessage = input.message ?? "Automatic checkpoint";
       const source = serializeRfdDocument({
         frontmatter: {
           ...parsed.frontmatter,
@@ -359,7 +392,7 @@ const RfdRepositoryLayer = Layer.effect(
           source,
           authorName: user.name,
           expectedHeadSha: input.expectedHeadSha,
-          message: input.message,
+          message: checkpointMessage,
         })
         .pipe(
           Effect.mapError((error) =>
@@ -383,6 +416,7 @@ const RfdRepositoryLayer = Layer.effect(
           title: parsed.frontmatter.title,
           status: parsed.frontmatter.status,
           committedSource: source,
+          checkpointMessage,
           timestamp,
         })
         .pipe(

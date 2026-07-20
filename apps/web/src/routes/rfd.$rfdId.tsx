@@ -158,13 +158,14 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
                   number={committed.number}
                   author={committed.author}
                   headSha={committed.headSha}
+                  checkpointMessage={committed.checkpointMessage}
                   title={title || committed.title}
                   metadata={metadata}
                   canEdit={canEdit}
                   setMetadata={setMetadata}
                 />
               )}
-              renderActions={({ checkpoint, canPublish }) => (
+              renderActions={({ checkpoint, canPublish, roomState }) => (
                 <>
                   <div className="flex items-center gap-2">
                     <Button
@@ -172,7 +173,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
                       disabled={!canPublish}
                       onClick={() => setCheckpointDialogOpen(true)}
                     >
-                      Checkpoint
+                      {roomState === "Checkpointing…" ? "Checkpointing…" : "Checkpoint"}
                     </Button>
                     <Button type="button" variant="outline" onClick={() => setLive(false)}>
                       Close live view
@@ -211,6 +212,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
                         </Button>
                         <Button
                           type="button"
+                          disabled={roomState === "Checkpointing…"}
                           onClick={() => {
                             checkpoint(checkpointMessage.trim() || undefined);
                             setCheckpointMessage("");
@@ -264,7 +266,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
             {committed.title}
           </h1>
           <p className="mt-4 font-mono text-xs text-muted-foreground">
-            {committed.author} · Checkpoint {committed.headSha.slice(0, 8)}
+            {committed.author} · {committed.checkpointMessage} · {committed.headSha.slice(0, 8)}
             <span
               aria-label="Latest checkpoint"
               className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
@@ -281,6 +283,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
             sha: committed.headSha,
             author: committed.author,
             updated: committed.updated,
+            message: committed.checkpointMessage,
           }}
           onClose={() => setHistoryOpen(false)}
         />
@@ -297,6 +300,7 @@ function LiveDocumentPlaceholder({
     readonly title: string;
     readonly author: string;
     readonly headSha: string;
+    readonly checkpointMessage: string;
   };
 }) {
   return (
@@ -307,7 +311,7 @@ function LiveDocumentPlaceholder({
           {committed.title}
         </h1>
         <p className="mt-4 font-mono text-xs text-muted-foreground">
-          {committed.author} · Checkpoint {committed.headSha.slice(0, 8)}
+          {committed.author} · {committed.checkpointMessage} · {committed.headSha.slice(0, 8)}
         </p>
       </header>
       <Skeleton className="mt-10 min-h-[24rem]" aria-label="Loading live document" />
@@ -332,7 +336,12 @@ function RfdHistory({
   onClose,
 }: {
   readonly rfdId: typeof RfdId.Type;
-  readonly current: { readonly sha: string; readonly author: string; readonly updated: string };
+  readonly current: {
+    readonly sha: string;
+    readonly message: string;
+    readonly author: string;
+    readonly updated: string;
+  };
   readonly onClose: () => void;
 }) {
   const history = useAtomValue(rfdHistoryAtom(rfdId));
@@ -353,7 +362,7 @@ function RfdHistory({
         </DrawerHeader>
         <div className="min-h-0 overflow-y-auto px-6">
           <div className="border-b py-4">
-            <p className="text-sm font-medium text-foreground">Latest change</p>
+            <p className="text-sm font-medium text-foreground">{current.message}</p>
             <p className="mt-1 font-mono text-xs text-muted-foreground">
               {current.author} · {new Date(current.updated).toLocaleString()} ·{" "}
               {current.sha.slice(0, 8)}
@@ -394,6 +403,7 @@ function EditableDocumentHeader({
   number,
   author,
   headSha,
+  checkpointMessage,
   title,
   metadata,
   canEdit,
@@ -402,6 +412,7 @@ function EditableDocumentHeader({
   readonly number: number;
   readonly author: string;
   readonly headSha: string;
+  readonly checkpointMessage: string;
   readonly title: string;
   readonly metadata: {
     readonly authors?: readonly string[];
@@ -425,7 +436,7 @@ function EditableDocumentHeader({
         onChange={(event) => setMetadata("title", event.target.value)}
       />
       <p className="mt-4 font-mono text-xs text-muted-foreground">
-        {author} · Checkpoint {headSha.slice(0, 8)}
+        {author} · {checkpointMessage} · {headSha.slice(0, 8)}
       </p>
       <button
         type="button"

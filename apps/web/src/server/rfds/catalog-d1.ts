@@ -29,6 +29,7 @@ const CatalogRow = Schema.Struct({
   artifact_remote: Schema.String,
   head_sha: CommitSha,
   committed_source: Schema.NullOr(Schema.String),
+  checkpoint_message: Schema.NullOr(Schema.String),
   owner_user_id: UserId,
   author: Schema.String,
   updated_at: Timestamp,
@@ -43,6 +44,7 @@ interface CatalogRecord {
   readonly artifactRemote: string;
   readonly headSha: CommitShaValue;
   readonly committedSource: string | null;
+  readonly checkpointMessage: string | null;
   readonly ownerUserId: UserIdValue;
   readonly author: string;
   readonly updated: string;
@@ -103,6 +105,11 @@ export interface RfdCatalogStoreShape {
     readonly headSha: CommitShaValue;
     readonly committedSource: string;
   }) => Effect.Effect<void, CatalogQueryFailed>;
+  readonly cacheCheckpointMessage: (input: {
+    readonly rfdId: RfdIdValue;
+    readonly headSha: CommitShaValue;
+    readonly checkpointMessage: string;
+  }) => Effect.Effect<void, CatalogQueryFailed>;
   readonly commitCheckpoint: (input: {
     readonly rfdId: RfdIdValue;
     readonly expectedHeadSha: CommitShaValue;
@@ -110,6 +117,7 @@ export interface RfdCatalogStoreShape {
     readonly title: string;
     readonly status: RfdStatusValue;
     readonly committedSource: string;
+    readonly checkpointMessage: string;
     readonly timestamp: number;
   }) => Effect.Effect<void, CatalogQueryFailed | CatalogCheckpointConflict>;
   readonly getRoomRole: (
@@ -124,7 +132,8 @@ export class RfdCatalogStore extends Context.Service<RfdCatalogStore, RfdCatalog
 
 const selectColumns = `
   SELECT r.rfd_id, r.number, r.title, r.status, r.artifact_repo_name,
-    r.artifact_remote, r.head_sha, r.committed_source, r.owner_user_id, u.name AS author, r.updated_at
+    r.artifact_remote, r.head_sha, r.committed_source, r.checkpoint_message,
+    r.owner_user_id, u.name AS author, r.updated_at
   FROM rfd_catalog r
   JOIN user u ON u.id = r.owner_user_id`;
 
@@ -172,6 +181,7 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
       artifactRemote: row.artifact_remote,
       headSha: row.head_sha,
       committedSource: row.committed_source,
+      checkpointMessage: row.checkpoint_message,
       ownerUserId: row.owner_user_id,
       author: row.author,
       updated: new Date(row.updated_at).toISOString(),
@@ -222,8 +232,8 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
           .prepare(
             `INSERT INTO rfd_catalog
            (rfd_id, number, title, status, artifact_repo_name, artifact_remote, head_sha,
-            committed_source, owner_user_id, created_at, updated_at)
-           VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`,
+             committed_source, checkpoint_message, owner_user_id, created_at, updated_at)
+            VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, 'Create RFD', ?, ?, ?)`,
           )
           .bind(
             record.rfdId,
@@ -254,12 +264,20 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
         .run(),
     ).pipe(Effect.asVoid),
   ),
+  cacheCheckpointMessage: Effect.fn("RfdCatalogStore.cacheCheckpointMessage")((input) =>
+    query("cache checkpoint message", () =>
+      database
+        .prepare("UPDATE rfd_catalog SET checkpoint_message = ? WHERE rfd_id = ? AND head_sha = ?")
+        .bind(input.checkpointMessage, input.rfdId, input.headSha)
+        .run(),
+    ).pipe(Effect.asVoid),
+  ),
   commitCheckpoint: Effect.fn("RfdCatalogStore.commitCheckpoint")(function* (input) {
     const result = yield* query("commit RFD checkpoint", () =>
       database
         .prepare(
           `UPDATE rfd_catalog
-           SET title = ?, status = ?, head_sha = ?, committed_source = ?, updated_at = ?
+           SET title = ?, status = ?, head_sha = ?, committed_source = ?, checkpoint_message = ?, updated_at = ?
            WHERE rfd_id = ? AND head_sha = ?`,
         )
         .bind(
@@ -267,6 +285,7 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
           input.status,
           input.nextHeadSha,
           input.committedSource,
+          input.checkpointMessage,
           input.timestamp,
           input.rfdId,
           input.expectedHeadSha,

@@ -36,14 +36,17 @@ export class RfdRoomProvider {
     readonly capability: RoomCapability | null;
     readonly error: string | null;
     readonly localChangePending: boolean;
+    readonly checkpointPending: boolean;
   } = {
     connection: "disconnected",
     room: null,
     capability: null,
     error: null,
     localChangePending: false,
+    checkpointPending: false,
   };
   private localChangePending = false;
+  private checkpointPending = false;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -70,6 +73,7 @@ export class RfdRoomProvider {
     socket.binaryType = "arraybuffer";
     this.socket = socket;
     socket.onopen = () => {
+      if (this.socket !== socket) return;
       this.hasConnected = true;
       this.failedConnectionAttempts = 0;
       this.error = null;
@@ -82,10 +86,16 @@ export class RfdRoomProvider {
         );
       }
     };
-    socket.onmessage = (event) => this.onMessage(event.data);
-    socket.onerror = () => socket.close();
+    socket.onmessage = (event) => {
+      if (this.socket === socket) this.onMessage(event.data);
+    };
+    socket.onerror = () => {
+      if (this.socket === socket) socket.close();
+    };
     socket.onclose = (event) => {
+      if (this.socket !== socket) return;
       this.socket = null;
+      this.checkpointPending = false;
       if (this.shouldConnect && event.code !== 1000 && event.code !== 1001) {
         this.failedConnectionAttempts += 1;
         if (this.hasConnected || this.failedConnectionAttempts >= 3) {
@@ -110,18 +120,16 @@ export class RfdRoomProvider {
   };
 
   readonly checkpoint = (message?: string) => {
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.error = null;
-      this.snapshot = {
-        connection: this.connectionStatus,
-        room: this.roomStatus,
-        capability: this.capability,
-        error: null,
-        localChangePending: this.localChangePending,
-      };
-      this.emit();
-      this.socket.send(JSON.stringify({ type: "checkpoint", message }));
+    if (this.socket?.readyState !== WebSocket.OPEN) {
+      this.error =
+        "Cannot create a checkpoint while the live document is disconnected. Reconnect and try again.";
+      this.updateSnapshot();
+      return;
     }
+    this.error = null;
+    this.checkpointPending = true;
+    this.updateSnapshot();
+    this.socket.send(JSON.stringify({ type: "checkpoint", message }));
   };
 
   readonly destroy = () => {
@@ -149,40 +157,21 @@ export class RfdRoomProvider {
         this.generation = event.generation;
         if (event.capability !== undefined) {
           this.capability = event.capability;
-          this.snapshot = {
-            connection: this.connectionStatus,
-            room: this.roomStatus,
-            capability: this.capability,
-            error: this.error,
-            localChangePending: this.localChangePending,
-          };
-          this.emit();
+          this.updateSnapshot();
         }
       } else if (event.type === "status" && event.status !== undefined) {
         this.roomStatus = event.status;
         this.localChangePending = false;
-        this.snapshot = {
-          connection: this.connectionStatus,
-          room: this.roomStatus,
-          capability: this.capability,
-          error: this.error,
-          localChangePending: false,
-        };
-        this.emit();
+        this.checkpointPending = event.status._tag === "Checkpointing";
+        this.updateSnapshot();
       } else if (event.type === "checkpoint") {
         this.onCheckpoint?.();
       } else if (event.type === "reset") {
         window.location.reload();
       } else if (event.type === "error") {
         this.error = event.message ?? "The room operation failed.";
-        this.snapshot = {
-          connection: this.connectionStatus,
-          room: this.roomStatus,
-          capability: this.capability,
-          error: this.error,
-          localChangePending: this.localChangePending,
-        };
-        this.emit();
+        this.checkpointPending = false;
+        this.updateSnapshot();
       }
       return;
     }
@@ -207,14 +196,7 @@ export class RfdRoomProvider {
   private readonly onDocumentUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === this) return;
     this.localChangePending = true;
-    this.snapshot = {
-      connection: this.connectionStatus,
-      room: this.roomStatus,
-      capability: this.capability,
-      error: this.error,
-      localChangePending: true,
-    };
-    this.emit();
+    this.updateSnapshot();
     this.sendBinary(messageDocumentUpdate, update);
   };
 
@@ -244,12 +226,17 @@ export class RfdRoomProvider {
 
   private readonly setConnectionStatus = (status: ConnectionStatus) => {
     this.connectionStatus = status;
+    this.updateSnapshot();
+  };
+
+  private readonly updateSnapshot = () => {
     this.snapshot = {
       connection: this.connectionStatus,
       room: this.roomStatus,
       capability: this.capability,
       error: this.error,
       localChangePending: this.localChangePending,
+      checkpointPending: this.checkpointPending,
     };
     this.emit();
   };

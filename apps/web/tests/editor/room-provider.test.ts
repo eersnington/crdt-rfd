@@ -5,6 +5,7 @@ import { RfdRoomProvider, roomWebSocketUrl } from "../../src/editor/room-provide
 class FakeWebSocket {
   static readonly OPEN = 1;
   static instances: FakeWebSocket[] = [];
+  static deferClose = false;
   readonly sent: unknown[] = [];
   readyState = FakeWebSocket.OPEN;
   binaryType = "";
@@ -23,6 +24,10 @@ class FakeWebSocket {
 
   close(code = 1000, reason = "") {
     this.readyState = 3;
+    if (!FakeWebSocket.deferClose) this.onclose?.({ code, reason });
+  }
+
+  finishClose(code = 1000, reason = "") {
     this.onclose?.({ code, reason });
   }
 }
@@ -32,6 +37,7 @@ describe("RfdRoomProvider lifecycle", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     FakeWebSocket.instances = [];
+    FakeWebSocket.deferClose = false;
   });
 
   it("remains usable after the Strict Mode mount-cleanup-mount cycle", () => {
@@ -46,6 +52,31 @@ describe("RfdRoomProvider lifecycle", () => {
 
     expect(FakeWebSocket.instances).toHaveLength(2);
     expect(FakeWebSocket.instances[1]?.sent).toHaveLength(1);
+    provider.destroy();
+  });
+
+  it("ignores a stale close after the replacement socket connects", () => {
+    vi.stubGlobal("window", { location: { protocol: "https:", host: "example.test" } });
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    FakeWebSocket.deferClose = true;
+    const provider = new RfdRoomProvider("r1");
+
+    provider.connect();
+    const staleSocket = FakeWebSocket.instances[0];
+    provider.disconnect();
+    provider.connect();
+    staleSocket?.finishClose();
+    FakeWebSocket.instances[1]?.onopen?.();
+    provider.checkpoint("Keep the replacement connection");
+
+    expect(provider.getSnapshot()).toMatchObject({
+      connection: "connected",
+      error: null,
+      checkpointPending: true,
+    });
+    expect(FakeWebSocket.instances[1]?.sent).toContain(
+      JSON.stringify({ type: "checkpoint", message: "Keep the replacement connection" }),
+    );
     provider.destroy();
   });
 
@@ -99,6 +130,38 @@ describe("RfdRoomProvider lifecycle", () => {
     });
 
     expect(onCheckpoint).toHaveBeenCalledOnce();
+    provider.destroy();
+  });
+
+  it("sends a checkpoint command and immediately marks it pending", () => {
+    vi.stubGlobal("window", { location: { protocol: "https:", host: "example.test" } });
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const provider = new RfdRoomProvider("r1");
+
+    provider.connect();
+    FakeWebSocket.instances[0]?.onopen?.();
+    provider.checkpoint("Clarify the proposal");
+
+    expect(FakeWebSocket.instances[0]?.sent).toContain(
+      JSON.stringify({ type: "checkpoint", message: "Clarify the proposal" }),
+    );
+    expect(provider.getSnapshot()).toMatchObject({ checkpointPending: true });
+    provider.destroy();
+  });
+
+  it("reports a checkpoint attempt made while disconnected", () => {
+    vi.stubGlobal("window", { location: { protocol: "https:", host: "example.test" } });
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const provider = new RfdRoomProvider("r1");
+
+    provider.checkpoint();
+
+    expect(provider.getSnapshot()).toMatchObject({
+      error:
+        "Cannot create a checkpoint while the live document is disconnected. Reconnect and try again.",
+      checkpointPending: false,
+    });
+    expect(FakeWebSocket.instances).toHaveLength(0);
     provider.destroy();
   });
 });

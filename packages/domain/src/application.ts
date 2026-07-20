@@ -36,6 +36,7 @@ export const CommittedRfdDocument = Schema.Struct({
   updated: IsoTimestamp,
   body: Schema.String,
   headSha: CommitSha,
+  checkpointMessage: Schema.String,
 });
 export type CommittedRfdDocument = typeof CommittedRfdDocument.Type;
 
