@@ -35,12 +35,15 @@ export class RfdRoomProvider {
     readonly room: RoomStatus | null;
     readonly capability: RoomCapability | null;
     readonly error: string | null;
+    readonly localChangePending: boolean;
   } = {
     connection: "disconnected",
     room: null,
     capability: null,
     error: null,
+    localChangePending: false,
   };
+  private localChangePending = false;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -114,6 +117,7 @@ export class RfdRoomProvider {
         room: this.roomStatus,
         capability: this.capability,
         error: null,
+        localChangePending: this.localChangePending,
       };
       this.emit();
       this.socket.send(JSON.stringify({ type: "checkpoint", message }));
@@ -150,16 +154,19 @@ export class RfdRoomProvider {
             room: this.roomStatus,
             capability: this.capability,
             error: this.error,
+            localChangePending: this.localChangePending,
           };
           this.emit();
         }
       } else if (event.type === "status" && event.status !== undefined) {
         this.roomStatus = event.status;
+        this.localChangePending = false;
         this.snapshot = {
           connection: this.connectionStatus,
           room: this.roomStatus,
           capability: this.capability,
           error: this.error,
+          localChangePending: false,
         };
         this.emit();
       } else if (event.type === "checkpoint") {
@@ -173,6 +180,7 @@ export class RfdRoomProvider {
           room: this.roomStatus,
           capability: this.capability,
           error: this.error,
+          localChangePending: this.localChangePending,
         };
         this.emit();
       }
@@ -198,6 +206,15 @@ export class RfdRoomProvider {
 
   private readonly onDocumentUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === this) return;
+    this.localChangePending = true;
+    this.snapshot = {
+      connection: this.connectionStatus,
+      room: this.roomStatus,
+      capability: this.capability,
+      error: this.error,
+      localChangePending: true,
+    };
+    this.emit();
     this.sendBinary(messageDocumentUpdate, update);
   };
 
@@ -232,6 +249,7 @@ export class RfdRoomProvider {
       room: this.roomStatus,
       capability: this.capability,
       error: this.error,
+      localChangePending: this.localChangePending,
     };
     this.emit();
   };

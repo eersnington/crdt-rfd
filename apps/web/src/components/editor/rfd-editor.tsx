@@ -105,13 +105,13 @@ export function RfdCollaborativeDocument({
   const checkpoint = provider.checkpoint;
   const canPublish =
     state.connection === "connected" &&
-    state.room?._tag === "Dirty" &&
+    (state.room?._tag === "Dirty" || state.localChangePending) &&
     (state.capability?.canCheckpoint ?? true);
   const presenceCount = provider.awareness.getStates().size;
   const roomState =
     state.connection !== "connected"
       ? state.connection
-      : state.room?._tag === "Dirty"
+      : state.localChangePending || state.room?._tag === "Dirty"
         ? "Changes waiting for checkpoint"
         : state.room?._tag === "Checkpointing"
           ? "Checkpointing…"
