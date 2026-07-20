@@ -50,6 +50,7 @@ export const CheckpointRfdInput = Schema.Struct({
   rfdId: RfdId,
   expectedHeadSha: CommitSha,
   source: Schema.String,
+  message: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
 });
 export type CheckpointRfdInput = typeof CheckpointRfdInput.Type;
 

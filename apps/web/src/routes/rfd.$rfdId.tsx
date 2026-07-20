@@ -16,8 +16,22 @@ import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import { RfdSearchProvider } from "@/components/rfd-search";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { RfdReader } from "@/components/editor/rfd-reader";
-import { rfdDocumentAtom, searchDialogOpenAtom, sessionAtom, signOutAtom } from "@/rpc/client";
+import { useMountEffect } from "@/lib/use-mount-effect";
+import {
+  rfdDocumentAtom,
+  rfdHistoryAtom,
+  searchDialogOpenAtom,
+  sessionAtom,
+  signOutAtom,
+} from "@/rpc/client";
 import { getRfdInitialApplicationState } from "@/server/application/initial-state";
 
 const RfdCollaborativeDocument = lazy(() =>
@@ -102,8 +116,10 @@ function RfdRoute() {
 function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   const document = useAtomValue(rfdDocumentAtom(rfdId));
   const refreshDocument = useAtomRefresh(rfdDocumentAtom(rfdId));
+  const prefetchHistory = useAtomRefresh(rfdHistoryAtom(rfdId));
   const session = useAtomValue(sessionAtom);
-  const [editing, setEditing] = useState(false);
+  const [live, setLive] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   if (AsyncResult.isFailure(document)) {
     return <DocumentMessage message="The committed RFD could not be loaded. Try again shortly." />;
@@ -114,7 +130,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   const user = AsyncResult.isSuccess(session) ? session.value?.user : undefined;
   const committed = document.value;
 
-  if (editing && user !== undefined) {
+  if (live) {
     return (
       <main className="min-h-svh bg-background px-4 pt-28 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
         <article className="mx-auto max-w-3xl">
@@ -126,25 +142,31 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
               rfdId={rfdId}
               user={user}
               onCheckpoint={refreshDocument}
-              renderMetadata={({ title, status, metadata, canEdit, setMetadata }) => (
+              renderMetadata={({ title, metadata, canEdit, setMetadata }) => (
                 <EditableDocumentHeader
                   number={committed.number}
                   author={committed.author}
                   headSha={committed.headSha}
                   title={title}
-                  status={status}
                   metadata={metadata}
                   canEdit={canEdit}
                   setMetadata={setMetadata}
                 />
               )}
-              renderActions={({ publish, canPublish }) => (
+              renderActions={({ checkpoint, canPublish }) => (
                 <div className="flex items-center gap-2">
-                  <Button type="button" disabled={!canPublish} onClick={publish}>
-                    Publish
+                  <Button
+                    type="button"
+                    disabled={!canPublish}
+                    onClick={() => {
+                      const message = window.prompt("Checkpoint message (optional)");
+                      checkpoint(message === null ? undefined : message);
+                    }}
+                  >
+                    Checkpoint
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => setEditing(false)}>
-                    Done editing
+                  <Button type="button" variant="outline" onClick={() => setLive(false)}>
+                    Close live view
                   </Button>
                 </div>
               )}
@@ -160,26 +182,125 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
       <article className="mx-auto max-w-3xl">
         <header className="relative border-b pb-7">
           <p className="font-mono text-xs text-primary">RFD {committed.number}</p>
-          {user === undefined ? null : (
+          <div className="absolute top-0 right-0 flex items-center gap-2">
             <Button
               type="button"
               size="sm"
-              className="absolute top-0 right-0"
-              onClick={() => setEditing(true)}
+              variant="outline"
+              onPointerEnter={prefetchHistory}
+              onFocus={prefetchHistory}
+              onClick={() => {
+                prefetchHistory();
+                setHistoryOpen(true);
+              }}
             >
+              History
+            </Button>
+            <Button type="button" size="sm" onClick={() => setLive(true)}>
               Edit
             </Button>
-          )}
+          </div>
           <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
             {committed.title}
           </h1>
           <p className="mt-4 font-mono text-xs text-muted-foreground">
-            {committed.author} · {committed.status} · {committed.headSha.slice(0, 8)}
+            {committed.author} · Checkpoint {committed.headSha.slice(0, 8)}
+            <span
+              aria-label="Latest checkpoint"
+              className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
+            />
           </p>
         </header>
         <RfdReader source={committed.body} />
       </article>
+      <HistoryPrefetch rfdId={rfdId} />
+      {historyOpen ? (
+        <RfdHistory
+          rfdId={rfdId}
+          current={{
+            sha: committed.headSha,
+            author: committed.author,
+            updated: committed.updated,
+          }}
+          onClose={() => setHistoryOpen(false)}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function HistoryPrefetch({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
+  const prefetchHistory = useAtomRefresh(rfdHistoryAtom(rfdId));
+
+  useMountEffect(() => {
+    const timer = window.setTimeout(prefetchHistory, 500);
+    return () => window.clearTimeout(timer);
+  });
+
+  return null;
+}
+
+function RfdHistory({
+  rfdId,
+  current,
+  onClose,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly current: { readonly sha: string; readonly author: string; readonly updated: string };
+  readonly onClose: () => void;
+}) {
+  const history = useAtomValue(rfdHistoryAtom(rfdId));
+
+  return (
+    <Drawer open direction="right" onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DrawerContent aria-label="RFD history">
+        <DrawerHeader className="flex-row items-start justify-between gap-4 border-b">
+          <div>
+            <p className="font-mono text-xs text-primary">Git history</p>
+            <DrawerTitle className="mt-1">Checkpoints</DrawerTitle>
+          </div>
+          <DrawerClose asChild>
+            <Button type="button" variant="outline" size="sm">
+              Close
+            </Button>
+          </DrawerClose>
+        </DrawerHeader>
+        <div className="min-h-0 overflow-y-auto px-6">
+          <div className="border-b py-4">
+            <p className="text-sm font-medium text-foreground">Latest change</p>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              {current.author} · {new Date(current.updated).toLocaleString()} ·{" "}
+              {current.sha.slice(0, 8)}
+              <span
+                aria-label="Latest checkpoint"
+                className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
+              />
+            </p>
+          </div>
+          {AsyncResult.isFailure(history) ? (
+            <p className="pt-6 text-sm text-destructive">
+              History could not be loaded. Try again shortly.
+            </p>
+          ) : !AsyncResult.isSuccess(history) ? (
+            <p className="py-4 text-sm text-muted-foreground">Loading earlier checkpoints…</p>
+          ) : (
+            <ol className="divide-y">
+              {history.value
+                .filter((checkpoint) => checkpoint.sha !== current.sha)
+                .map((checkpoint) => (
+                  <li key={checkpoint.sha} className="py-4">
+                    <p className="text-sm font-medium text-foreground">{checkpoint.message}</p>
+                    <p className="mt-1 font-mono text-xs text-muted-foreground">
+                      {checkpoint.author} · {new Date(checkpoint.createdAt).toLocaleString()} ·{" "}
+                      {checkpoint.sha.slice(0, 8)}
+                    </p>
+                  </li>
+                ))}
+            </ol>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -188,7 +309,6 @@ function EditableDocumentHeader({
   author,
   headSha,
   title,
-  status,
   metadata,
   canEdit,
   setMetadata,
@@ -197,7 +317,6 @@ function EditableDocumentHeader({
   readonly author: string;
   readonly headSha: string;
   readonly title: string;
-  readonly status: string;
   readonly metadata: {
     readonly authors?: readonly string[];
     readonly reviewers?: readonly string[];
@@ -220,21 +339,7 @@ function EditableDocumentHeader({
         onChange={(event) => setMetadata("title", event.target.value)}
       />
       <p className="mt-4 font-mono text-xs text-muted-foreground">
-        {author} ·{" "}
-        <select
-          aria-label="RFD status"
-          disabled={!canEdit}
-          className="bg-transparent font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
-          value={status}
-          onChange={(event) => setMetadata("status", event.target.value)}
-        >
-          {(["draft", "discussion", "accepted", "rejected", "superseded"] as const).map((value) => (
-            <option key={value} value={value}>
-              {value}
-            </option>
-          ))}
-        </select>{" "}
-        · {headSha.slice(0, 8)}
+        {author} · Checkpoint {headSha.slice(0, 8)}
       </p>
       <button
         type="button"

@@ -1,4 +1,4 @@
-import { CommitSha, type CommitSha as CommitShaValue } from "@crdt-rfd/domain";
+import { CommitSha, type CommitSha as CommitShaValue, type RfdCheckpoint } from "@crdt-rfd/domain";
 import { Context, Effect, Layer, Result, Schema } from "effect";
 import git from "isomorphic-git";
 import http from "isomorphic-git/http/web";
@@ -6,6 +6,7 @@ import http from "isomorphic-git/http/web";
 import { MemoryFS } from "./memory-fs";
 
 const directory = "/workspace";
+const historyDepth = 20;
 const credentials = (token: string) => () => ({ username: "x", password: token });
 
 export class GitInitializationFailed extends Schema.TaggedErrorClass<GitInitializationFailed>()(
@@ -74,10 +75,15 @@ export interface GitRepositoryShape {
     readonly source: string;
     readonly authorName: string;
     readonly expectedHeadSha: CommitShaValue;
+    readonly message?: string;
   }) => Effect.Effect<
     { readonly previousHeadSha: CommitShaValue; readonly headSha: CommitShaValue },
     GitCheckpointConflict | GitCheckpointFailed
   >;
+  readonly history: (options: {
+    readonly remote: string;
+    readonly token: string;
+  }) => Effect.Effect<ReadonlyArray<RfdCheckpoint>, GitReadFailed>;
 }
 
 export class GitRepository extends Context.Service<GitRepository, GitRepositoryShape>()(
@@ -210,7 +216,7 @@ export const GitRepositoryLive = Layer.succeed(
           git.commit({
             fs,
             dir: directory,
-            message: "Checkpoint RFD",
+            message: options.message ?? "Automatic checkpoint",
             author: { name: options.authorName, email: "rfd@crdt-rfd.invalid" },
           }),
         catch: checkpointFailure("create checkpoint commit"),
@@ -264,6 +270,39 @@ export const GitRepositoryLive = Layer.succeed(
         return yield* pushed.failure;
       }
       return { previousHeadSha, headSha };
+    }),
+    history: Effect.fn("GitRepository.history")(function* (options) {
+      const fs = new MemoryFS();
+      yield* Effect.tryPromise({
+        try: () =>
+          git.clone({
+            fs,
+            http,
+            dir: directory,
+            url: options.remote,
+            ref: "main",
+            singleBranch: true,
+            depth: historyDepth,
+            onAuth: credentials(options.token),
+            onAuthFailure: credentials(options.token),
+          }),
+        catch: readFailure("clone repository history"),
+      });
+      const commits = yield* Effect.tryPromise({
+        try: () => git.log({ fs, dir: directory, depth: historyDepth }),
+        catch: readFailure("read repository history"),
+      });
+      return yield* Effect.forEach(commits, (commit) =>
+        Schema.decodeUnknownEffect(CommitSha)(commit.oid).pipe(
+          Effect.map((sha) => ({
+            sha,
+            message: commit.commit.message.split("\n")[0] ?? "Checkpoint",
+            author: commit.commit.author.name,
+            createdAt: new Date(commit.commit.author.timestamp * 1_000).toISOString(),
+          })),
+          Effect.mapError(readFailure("decode history commit")),
+        ),
+      );
     }),
   }),
 );

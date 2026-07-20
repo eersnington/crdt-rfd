@@ -36,6 +36,10 @@ export const rfdDocumentAtom = Atom.family((rfdId: RfdId) =>
   ApplicationRpcClient.query("rfd_get", { rfdId }, { serializationKey: rfdId }),
 );
 
+export const rfdHistoryAtom = Atom.family((rfdId: RfdId) =>
+  ApplicationRpcClient.query("rfd_history", { rfdId }, { serializationKey: rfdId }),
+);
+
 export const sessionAtom = ApplicationRpcClient.query("session_getCurrent", undefined, {
   serializationKey: "current",
 });

@@ -5,6 +5,7 @@ import {
   GetRfdInput,
   OptionalCurrentSession,
   RfdOperationFailed,
+  RfdCheckpoints,
   RfdSummary,
   RfdSummaries,
   SessionUnavailable,
@@ -25,6 +26,10 @@ export const RfdRpc = RpcGroup.make(
   Rpc.make("get")
     .setPayload(GetRfdInput)
     .setSuccess(CommittedRfdDocument)
+    .setError(RfdOperationFailed),
+  Rpc.make("history")
+    .setPayload(GetRfdInput)
+    .setSuccess(RfdCheckpoints)
     .setError(RfdOperationFailed),
 ).prefix("rfd_");
 

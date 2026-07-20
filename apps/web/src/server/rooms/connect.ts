@@ -18,12 +18,19 @@ export const connectRfdRoom = async (request: Request, rawRfdId: string): Promis
       const sessions = yield* SessionService;
       const repository = yield* RfdRepository;
       const session = yield* sessions.getCurrent(request.headers);
-      if (session === null) return null;
+      if (session === null) {
+        return {
+          identity: {
+            id: crypto.randomUUID(),
+            name: "Viewer",
+            role: "commenter" as const,
+          },
+        };
+      }
       const role = yield* repository.getRoomRole(rfdId.success, session.user.id);
-      return role === null ? null : { identity: { ...session.user, role } };
+      return { identity: { ...session.user, role: role ?? ("commenter" as const) } };
     }),
   );
-  if (authorization === null) return new Response("RFD room access denied.", { status: 403 });
 
   const headers = new Headers(request.headers);
   headers.set("x-rfd-id", rfdId.success);

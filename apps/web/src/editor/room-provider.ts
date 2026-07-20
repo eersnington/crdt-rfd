@@ -102,11 +102,11 @@ export class RfdRoomProvider {
     }
     const socket = this.socket;
     this.socket = null;
-    socket?.close(1000, "Editor closed");
+    socket?.close(1000, "Live document closed");
     this.setConnectionStatus("disconnected");
   };
 
-  readonly checkpoint = () => {
+  readonly checkpoint = (message?: string) => {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.error = null;
       this.snapshot = {
@@ -116,7 +116,7 @@ export class RfdRoomProvider {
         error: null,
       };
       this.emit();
-      this.socket.send(JSON.stringify({ type: "checkpoint" }));
+      this.socket.send(JSON.stringify({ type: "checkpoint", message }));
     }
   };
 

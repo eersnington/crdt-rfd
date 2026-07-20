@@ -46,6 +46,7 @@ const messageDocumentSnapshot = 2;
 const messageAwarenessQuery = 3;
 const maximumUpdateBytes = 1_000_000;
 const maximumSnapshotBytes = 5_000_000;
+const automaticCheckpointDelayMs = 30_000;
 
 interface SocketAttachment {
   readonly identity: RoomIdentityValue;
@@ -67,23 +68,26 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
   private status: RoomStatus | null = null;
   private generation = 0;
   private revision = 0;
+  private lastEditor: SocketAttachment | null = null;
 
   constructor(ctx: DurableObjectState, env: WebsiteEnv) {
     super(ctx, env);
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
     void this.ctx.blockConcurrencyWhile(async () => {
-      const [snapshot, rfdId, baseSha, status, generation] = await Promise.all([
+      const [snapshot, rfdId, baseSha, status, generation, lastEditor] = await Promise.all([
         this.ctx.storage.get<ArrayBuffer>("snapshot"),
         this.ctx.storage.get<string>("rfdId"),
         this.ctx.storage.get<CommitSha>("baseSha"),
         this.ctx.storage.get<RoomStatus>("status"),
         this.ctx.storage.get<number>("generation"),
+        this.ctx.storage.get<SocketAttachment>("lastEditor"),
       ]);
       if (snapshot !== undefined) Y.applyUpdate(this.document, new Uint8Array(snapshot), this);
       if (rfdId !== undefined) this.rfdId = Schema.decodeUnknownSync(RfdId)(rfdId);
       this.baseSha = baseSha ?? null;
       this.status = status ?? null;
       this.generation = generation ?? 0;
+      this.lastEditor = lastEditor ?? null;
     });
   }
 
@@ -153,13 +157,32 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
     }
   }
 
+  override async alarm(): Promise<void> {
+    if (this.lastEditor === null || this.status?._tag !== "Dirty") return;
+    await this.checkpoint(this.lastEditor, undefined);
+  }
+
   private readonly handleWebSocketMessage = async (
     socket: WebSocket,
     message: ArrayBuffer | string,
   ): Promise<void> => {
     if (typeof message === "string") {
-      const command = JSON.parse(message) as { readonly type?: unknown };
-      if (command.type === "checkpoint") await this.checkpoint(socket);
+      const command = JSON.parse(message) as {
+        readonly type?: unknown;
+        readonly message?: unknown;
+      };
+      if (command.type === "checkpoint") {
+        const attachment = socket.deserializeAttachment() as SocketAttachment | null | undefined;
+        if (attachment === null || attachment === undefined) {
+          socket.send(JSON.stringify({ type: "error", message: "Checkpoint permission denied." }));
+          return;
+        }
+        await this.checkpoint(
+          attachment,
+          socket,
+          typeof command.message === "string" ? command.message.trim() || undefined : undefined,
+        );
+      }
       return;
     }
     const bytes = new Uint8Array(message);
@@ -213,9 +236,11 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
     candidate.destroy();
     if (!applyRoomUpdate(this.document, payload, this)) return;
     this.revision += 1;
+    this.lastEditor = attachment;
     if (this.baseSha === null) return;
     this.status = { _tag: "Dirty", baseSha: this.baseSha };
     await this.persist();
+    await this.ctx.storage.setAlarm(Date.now() + automaticCheckpointDelayMs);
     this.broadcast(message);
     this.broadcast(JSON.stringify({ type: "status", status: this.status }));
   };
@@ -272,16 +297,13 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
     await this.persist();
   };
 
-  private readonly checkpoint = async (socket: WebSocket): Promise<void> => {
-    const attachment = socket.deserializeAttachment() as SocketAttachment | null | undefined;
-    if (
-      attachment === null ||
-      attachment === undefined ||
-      attachment.identity.role === "commenter" ||
-      this.rfdId === null ||
-      this.baseSha === null
-    ) {
-      socket.send(JSON.stringify({ type: "error", message: "Checkpoint permission denied." }));
+  private readonly checkpoint = async (
+    attachment: SocketAttachment,
+    socket: WebSocket | undefined,
+    message?: string,
+  ): Promise<void> => {
+    if (attachment.identity.role === "commenter" || this.rfdId === null || this.baseSha === null) {
+      socket?.send(JSON.stringify({ type: "error", message: "Checkpoint permission denied." }));
       return;
     }
     const rfdId = this.rfdId;
@@ -296,7 +318,7 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
       }),
     );
     if (prepared._tag === "Failure") {
-      socket.send(
+      socket?.send(
         JSON.stringify({
           type: "error",
           message: "The draft metadata or body is invalid. Correct it before checkpointing.",
@@ -309,7 +331,7 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
     const result = await applicationRuntime.runPromiseExit(
       Effect.flatMap(RfdRepository, (repository) =>
         repository.checkpoint(
-          { rfdId, expectedHeadSha: baseSha, source: prepared.value },
+          { rfdId, expectedHeadSha: baseSha, source: prepared.value, message },
           {
             id: attachment.identity.userId,
             name: attachment.identity.name,
@@ -340,7 +362,7 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
         : { _tag: "Dirty", baseSha: this.baseSha };
     await this.persist();
     this.broadcast(JSON.stringify({ type: "status", status: this.status }));
-    socket.send(
+    socket?.send(
       JSON.stringify({
         type: "error",
         message:
@@ -364,6 +386,7 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
       baseSha: this.baseSha,
       status: this.status,
       generation: this.generation,
+      lastEditor: this.lastEditor,
       snapshot: snapshot.buffer.slice(
         snapshot.byteOffset,
         snapshot.byteOffset + snapshot.byteLength,

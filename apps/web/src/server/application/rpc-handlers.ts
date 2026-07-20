@@ -38,6 +38,7 @@ export const ApplicationRpcLive = ApplicationRpc.toLayer(
           ),
         ),
       rfd_get: (payload) => repository.get(payload.rfdId),
+      rfd_history: (payload) => repository.history(payload.rfdId),
       session_getCurrent: (_payload, options) => sessions.getCurrent(headers(options)),
     };
   }),

@@ -13,6 +13,7 @@ import {
   type CheckpointResult as CheckpointResultValue,
   type CheckpointRfdInput,
   type CommitSha,
+  type RfdCheckpoint,
   type CreateRfdInput,
   type CurrentUser,
   type RfdId as RfdIdValue,
@@ -43,6 +44,9 @@ export interface RfdRepositoryShape {
     rfdId: RfdIdValue,
     userId: typeof UserId.Type,
   ) => Effect.Effect<RoomRole | null, RfdOperationFailed>;
+  readonly history: (
+    rfdId: RfdIdValue,
+  ) => Effect.Effect<ReadonlyArray<RfdCheckpoint>, RfdOperationFailed>;
 }
 
 export class RfdRepository extends Context.Service<RfdRepository, RfdRepositoryShape>()(
@@ -355,6 +359,7 @@ const RfdRepositoryLayer = Layer.effect(
           source,
           authorName: user.name,
           expectedHeadSha: input.expectedHeadSha,
+          message: input.message,
         })
         .pipe(
           Effect.mapError((error) =>
@@ -406,6 +411,27 @@ const RfdRepositoryLayer = Layer.effect(
         ),
     );
 
+    const history = Effect.fn("RfdRepository.history")(function* (rfdId: RfdIdValue) {
+      const record = yield* catalog
+        .getRecord(rfdId)
+        .pipe(
+          Effect.mapError(() => failed("read RFD history", "The RFD catalog could not be loaded.")),
+        );
+      if (record === null) return yield* failed("read RFD history", `RFD ${rfdId} was not found.`);
+      const token = yield* artifacts
+        .createToken(record.artifactRepoName, "read")
+        .pipe(
+          Effect.mapError(() =>
+            failed("read RFD history", "A repository token could not be issued."),
+          ),
+        );
+      return yield* git
+        .history({ remote: record.artifactRemote, token })
+        .pipe(
+          Effect.mapError(() => failed("read RFD history", "The Git history could not be loaded.")),
+        );
+    });
+
     return RfdRepository.of({
       list,
       create,
@@ -413,6 +439,7 @@ const RfdRepositoryLayer = Layer.effect(
       loadCommittedSource,
       checkpoint,
       getRoomRole,
+      history,
     });
   }),
 );

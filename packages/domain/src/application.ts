@@ -42,6 +42,15 @@ export type CommittedRfdDocument = typeof CommittedRfdDocument.Type;
 export const GetRfdInput = Schema.Struct({ rfdId: RfdId });
 export type GetRfdInput = typeof GetRfdInput.Type;
 
+export const RfdCheckpoint = Schema.Struct({
+  sha: CommitSha,
+  message: Schema.String,
+  author: Schema.String,
+  createdAt: IsoTimestamp,
+});
+export type RfdCheckpoint = typeof RfdCheckpoint.Type;
+export const RfdCheckpoints = Schema.Array(RfdCheckpoint);
+
 export const CurrentUser = Schema.Struct({
   id: UserId,
   name: Schema.String,

@@ -28,7 +28,7 @@ export function RfdCollaborativeDocument({
   renderActions,
 }: {
   readonly rfdId: RfdId;
-  readonly user: CurrentUser;
+  readonly user: CurrentUser | undefined;
   readonly onCheckpoint: () => void;
   readonly renderMetadata: (metadata: {
     readonly title: string;
@@ -38,7 +38,7 @@ export function RfdCollaborativeDocument({
     readonly setMetadata: (key: string, value: unknown) => void;
   }) => ReactNode;
   readonly renderActions: (actions: {
-    readonly publish: () => void;
+    readonly checkpoint: (message?: string) => void;
     readonly canPublish: boolean;
     readonly roomState: string;
   }) => ReactNode;
@@ -52,52 +52,57 @@ export function RfdCollaborativeDocument({
   );
   const metadataMap = provider.document.getMap<unknown>("metadata");
   const metadata = useYMetadata(metadataMap);
-  const canEdit = state.capability?.canEdit ?? true;
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable: canEdit,
-    extensions: [
-      StarterKit.configure({ undoRedo: false }),
-      Markdown,
-      Collaboration.configure({ document: provider.document, field: "content" }),
-      CollaborationCaret.configure({
-        provider,
-        user: {
-          name: user.name,
-          color: colorFor(user.id),
+  // Capabilities arrive with the room snapshot. Until then, the surface must
+  // remain read-only so viewers never get a brief writable editor.
+  const canEdit = state.capability?.canEdit ?? false;
+  const editor = useEditor(
+    {
+      immediatelyRender: false,
+      editable: canEdit,
+      extensions: [
+        StarterKit.configure({ undoRedo: false }),
+        Markdown,
+        Collaboration.configure({ document: provider.document, field: "content" }),
+        CollaborationCaret.configure({
+          provider,
+          user: {
+            name: user?.name ?? "Viewer",
+            color: colorFor(user?.id ?? "viewer"),
+          },
+        }),
+      ],
+      editorProps: {
+        attributes: {
+          class: "document-prose min-h-[24rem] outline-none",
+          "aria-label": "RFD document body",
         },
-      }),
-    ],
-    editorProps: {
-      attributes: {
-        class: "document-prose min-h-[24rem] outline-none",
-        "aria-label": "RFD document body",
-      },
-      handleKeyDown: (view, event) => {
-        const selection = view.state.selection.$from;
-        if (
-          event.key !== "/" ||
-          selection.parentOffset !== 0 ||
-          selection.parent.textContent !== ""
-        ) {
-          return false;
-        }
-        setSlashOpen(true);
-        return true;
+        handleKeyDown: (view, event) => {
+          const selection = view.state.selection.$from;
+          if (
+            event.key !== "/" ||
+            selection.parentOffset !== 0 ||
+            selection.parent.textContent !== ""
+          ) {
+            return false;
+          }
+          setSlashOpen(true);
+          return true;
+        },
       },
     },
-  });
+    [canEdit],
+  );
 
   useMountEffect(() => {
     provider.awareness.setLocalStateField("user", {
-      name: user.name,
-      color: colorFor(user.id),
+      name: user?.name ?? "Viewer",
+      color: colorFor(user?.id ?? "viewer"),
     });
     provider.connect();
     return provider.disconnect;
   });
 
-  const publish = provider.checkpoint;
+  const checkpoint = provider.checkpoint;
   const canPublish =
     state.connection === "connected" &&
     state.room?._tag === "Dirty" &&
@@ -107,14 +112,14 @@ export function RfdCollaborativeDocument({
     state.connection !== "connected"
       ? state.connection
       : state.room?._tag === "Dirty"
-        ? "Unpublished changes"
+        ? "Changes waiting for checkpoint"
         : state.room?._tag === "Checkpointing"
-          ? "Publishing…"
+          ? "Checkpointing…"
           : state.room?._tag === "Conflicted"
             ? "Conflict"
             : state.room?._tag === "Clean"
-              ? "Published"
-              : "Loading";
+              ? "Checkpointed"
+              : "Loading live document";
 
   const setMetadata = (key: string, value: unknown) => metadataMap.set(key, value);
 
@@ -214,7 +219,7 @@ export function RfdCollaborativeDocument({
             ? ` · ${presenceCount - 1} collaborator${presenceCount === 2 ? "" : "s"}`
             : ""}
         </span>
-        {renderActions({ publish, canPublish, roomState })}
+        {renderActions({ checkpoint, canPublish, roomState })}
       </div>
     </>
   );
