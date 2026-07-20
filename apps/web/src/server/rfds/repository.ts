@@ -85,6 +85,23 @@ const RfdRepositoryLayer = Layer.effect(
     const catalog = yield* RfdCatalogStore;
     const git = yield* GitRepository;
 
+    const resolveForkSource = (forkedFromRfdId: RfdIdValue | null) =>
+      Effect.gen(function* () {
+        if (forkedFromRfdId === null) return null;
+        const source = yield* catalog.getRecord(forkedFromRfdId).pipe(
+          Effect.tapError(
+            logFailure("RfdRepository.resolveForkSource catalog lookup failed", {
+              forkedFromRfdId,
+            }),
+          ),
+          Effect.mapError(() =>
+            failed("read RFD fork source", "The source RFD for this fork could not be loaded."),
+          ),
+        );
+        if (source === null) return null;
+        return { rfdId: source.rfdId, number: source.number };
+      });
+
     const list = Effect.fn("RfdRepository.list")(() =>
       catalog.list().pipe(
         Effect.tapError(logFailure("RfdRepository.list failed")),
@@ -294,6 +311,7 @@ const RfdRepositoryLayer = Layer.effect(
       const parsed = yield* Effect.fromResult(parseRfdDocument(checkout.source)).pipe(
         Effect.mapError((error) => failed("read RFD", error.message)),
       );
+      const forkedFrom = yield* resolveForkSource(record.forkedFromRfdId);
       return yield* Schema.decodeUnknownEffect(CommittedRfdDocument)({
         rfdId,
         number: record.number,
@@ -304,6 +322,7 @@ const RfdRepositoryLayer = Layer.effect(
         body: parsed.body,
         headSha: checkout.headSha,
         checkpointMessage,
+        forkedFrom,
       }).pipe(
         Effect.mapError(() =>
           failed("read RFD", "The committed RFD metadata is invalid and could not be displayed."),
@@ -354,6 +373,7 @@ const RfdRepositoryLayer = Layer.effect(
       const parsed = yield* Effect.fromResult(parseRfdDocument(checkout.source)).pipe(
         Effect.mapError((error) => failed("read RFD ref", error.message)),
       );
+      const forkedFrom = yield* resolveForkSource(record.forkedFromRfdId);
       return yield* Schema.decodeUnknownEffect(CommittedRfdDocument)({
         rfdId: input.rfdId,
         number: record.number,
@@ -364,6 +384,7 @@ const RfdRepositoryLayer = Layer.effect(
         body: parsed.body,
         headSha: checkout.headSha,
         checkpointMessage: checkpoint.message,
+        forkedFrom,
       }).pipe(
         Effect.mapError(() =>
           failed("read RFD ref", "The selected checkpoint has invalid RFD metadata."),

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
 import {
   HydrationBoundary,
   RegistryProvider,
@@ -14,8 +14,8 @@ import {
   PencilSimpleIcon,
 } from "@phosphor-icons/react";
 import { BranchName, RfdId, type CommitSha, type RfdRef } from "@crdt-rfd/domain";
-import { Link, createFileRoute } from "@tanstack/react-router";
-import { Result, Schema } from "effect";
+import { Link, Navigate, createFileRoute } from "@tanstack/react-router";
+import { Cause, Result, Schema } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 
 import { RfdHeader } from "@/components/rfd-header";
@@ -69,6 +69,21 @@ const mainBranch = Schema.decodeUnknownSync(BranchName)("main");
 // Page-level document actions speak in the same mono-uppercase voice as the
 // catalog's primary actions and the metadata eyebrows.
 const actionButtonClass = "font-mono text-xs uppercase tracking-wider";
+
+const rpcFailureMessage = (cause: Cause.Cause<unknown>, fallback: string): string => {
+  const squashed = Cause.squash(cause);
+  if (
+    squashed !== null &&
+    typeof squashed === "object" &&
+    "message" in squashed &&
+    typeof squashed.message === "string" &&
+    squashed.message.length > 0
+  ) {
+    return squashed.message;
+  }
+  if (typeof squashed === "string" && squashed.length > 0) return squashed;
+  return fallback;
+};
 
 export const Route = createFileRoute("/rfd/$rfdId")({
   loader: ({ params }) => getRfdInitialApplicationState({ data: { rfdId: params.rfdId } }),
@@ -129,6 +144,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
     return <DocumentMessage message="Loading committed RFD…" />;
   }
   const user = AsyncResult.isSuccess(session) ? session.value?.user : undefined;
+  const signedIn = user !== undefined;
   const committed = document.value;
 
   if (selectedCheckpoint !== null) {
@@ -136,6 +152,8 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
       <HistoricalRfdDocument
         rfdId={rfdId}
         sha={selectedCheckpoint}
+        signedIn={signedIn}
+        forkedFrom={committed.forkedFrom}
         onReturn={() => setSelectedCheckpoint(null)}
         onSelect={(next) => setSelectedCheckpoint(next)}
       />
@@ -155,6 +173,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
               renderMetadata={({ title, metadata, canEdit, setMetadata }) => (
                 <EditableDocumentHeader
                   number={committed.number}
+                  forkedFrom={committed.forkedFrom}
                   author={committed.author}
                   headSha={committed.headSha}
                   checkpointMessage={committed.checkpointMessage}
@@ -242,23 +261,23 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
     <main className="min-h-svh bg-background">
       <article className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-6 sm:pt-14 sm:pb-24">
         <header>
-          <p className="font-mono text-xs tracking-wider text-primary uppercase">
-            RFD {committed.number}
-          </p>
+          <RfdEyebrow number={committed.number} forkedFrom={committed.forkedFrom} />
           <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
             {committed.title}
           </h1>
           <div className="mt-6 flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              className={actionButtonClass}
-              onPointerEnter={() => void loadCollaborativeDocument()}
-              onFocus={() => void loadCollaborativeDocument()}
-              onClick={() => setLive(true)}
-            >
-              <PencilSimpleIcon aria-hidden="true" />
-              Edit
-            </Button>
+            {signedIn ? (
+              <Button
+                type="button"
+                className={actionButtonClass}
+                onPointerEnter={() => void loadCollaborativeDocument()}
+                onFocus={() => void loadCollaborativeDocument()}
+                onClick={() => setLive(true)}
+              >
+                <PencilSimpleIcon aria-hidden="true" />
+                Edit
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -273,7 +292,12 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
               <ClockCounterClockwiseIcon aria-hidden="true" />
               History
             </Button>
-            <VersionActions rfdId={rfdId} ref={{ _tag: "Branch", branch: mainBranch }} canFork />
+            <VersionActions
+              rfdId={rfdId}
+              ref={{ _tag: "Branch", branch: mainBranch }}
+              signedIn={signedIn}
+              canFork={signedIn}
+            />
           </div>
           <dl className="mt-8">
             <PropertyRow label="Author">{committed.author}</PropertyRow>
@@ -328,6 +352,32 @@ function PropertyRow({
       </dt>
       <dd className="min-w-0 flex-1 text-sm">{children}</dd>
     </div>
+  );
+}
+
+function RfdEyebrow({
+  number,
+  forkedFrom,
+}: {
+  readonly number: number;
+  readonly forkedFrom: { readonly rfdId: string; readonly number: number } | null;
+}) {
+  return (
+    <p className="font-mono text-xs tracking-wider text-primary uppercase">
+      RFD {number}
+      {forkedFrom === null ? null : (
+        <>
+          <span className="text-muted-foreground"> · </span>
+          <Link
+            to="/rfd/$rfdId"
+            params={{ rfdId: forkedFrom.rfdId }}
+            className="text-muted-foreground transition-colors hover:text-primary"
+          >
+            Fork of RFD {forkedFrom.number}
+          </Link>
+        </>
+      )}
+    </p>
   );
 }
 
@@ -505,11 +555,15 @@ function CheckpointRow({
 function HistoricalRfdDocument({
   rfdId,
   sha,
+  signedIn,
+  forkedFrom,
   onReturn,
   onSelect,
 }: {
   readonly rfdId: typeof RfdId.Type;
   readonly sha: CommitSha;
+  readonly signedIn: boolean;
+  readonly forkedFrom: { readonly rfdId: string; readonly number: number } | null;
   readonly onReturn: () => void;
   readonly onSelect: (sha: CommitSha) => void;
 }) {
@@ -546,9 +600,7 @@ function HistoricalRfdDocument({
           </div>
         ) : (
           <header className="mt-8">
-            <p className="font-mono text-xs tracking-wider text-primary uppercase">
-              RFD {document.value.number}
-            </p>
+            <RfdEyebrow number={document.value.number} forkedFrom={forkedFrom} />
             <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
               {document.value.title}
             </h1>
@@ -570,7 +622,7 @@ function HistoricalRfdDocument({
                 <ClockCounterClockwiseIcon aria-hidden="true" />
                 History
               </Button>
-              <VersionActions rfdId={rfdId} ref={{ _tag: "Checkpoint", sha }} />
+              <VersionActions rfdId={rfdId} ref={{ _tag: "Checkpoint", sha }} signedIn={signedIn} />
             </div>
             <dl className="mt-8">
               <PropertyRow label="Author">{document.value.author}</PropertyRow>
@@ -616,14 +668,18 @@ function HistoricalRfdDocument({
 function VersionActions({
   rfdId,
   ref,
+  signedIn,
   canFork = false,
 }: {
   readonly rfdId: typeof RfdId.Type;
   readonly ref: RfdRef;
+  readonly signedIn: boolean;
   readonly canFork?: boolean;
 }) {
   const [cloneOpen, setCloneOpen] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
+  const [forkStarted, setForkStarted] = useState(false);
+  const forkBaselineId = useRef<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [cloneResult, mintCloneCredential] = useAtom(cloneCredentialAtom);
   const [forkResult, fork] = useAtom(forkRfdAtom);
@@ -644,6 +700,15 @@ function VersionActions({
       window.setTimeout(() => setCopied(false), 1000);
     });
   };
+
+  if (
+    forkStarted &&
+    AsyncResult.isSuccess(forkResult) &&
+    !forkResult.waiting &&
+    forkResult.value.rfdId !== forkBaselineId.current
+  ) {
+    return <Navigate to="/rfd/$rfdId" params={{ rfdId: forkResult.value.rfdId }} />;
+  }
 
   return (
     <>
@@ -679,7 +744,16 @@ function VersionActions({
               Generate a read-only Git credential for this version. It expires after five minutes.
             </DialogDescription>
           </DialogHeader>
-          {credential === null ? (
+          {!signedIn ? (
+            <div className="grid gap-3">
+              <p className="text-sm text-muted-foreground">
+                Sign in to generate a short-lived read-only clone credential.
+              </p>
+              <Button nativeButton={false} render={<Link to="/login" />}>
+                Sign in
+              </Button>
+            </div>
+          ) : credential === null ? (
             <Button
               type="button"
               disabled={cloneResult.waiting}
@@ -701,17 +775,21 @@ function VersionActions({
               </Button>
             </div>
           )}
-          {AsyncResult.isFailure(cloneResult) ? (
+          {signedIn && AsyncResult.isFailure(cloneResult) ? (
             <p className="text-sm text-destructive" role="alert">
-              {"message" in cloneResult.cause
-                ? String(cloneResult.cause.message)
-                : "The clone credential could not be generated."}
+              {rpcFailureMessage(cloneResult.cause, "The clone credential could not be generated.")}
             </p>
           ) : null}
         </DialogContent>
       </Dialog>
 
-      <Dialog open={forkOpen} onOpenChange={setForkOpen}>
+      <Dialog
+        open={forkOpen}
+        onOpenChange={(open) => {
+          setForkOpen(open);
+          if (!open) setForkStarted(false);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Fork this RFD</DialogTitle>
@@ -720,37 +798,30 @@ function VersionActions({
               stays unchanged.
             </DialogDescription>
           </DialogHeader>
-          {AsyncResult.isSuccess(forkResult) ? (
-            <Button
-              nativeButton={false}
-              render={<Link to="/rfd/$rfdId" params={{ rfdId: forkResult.value.rfdId }} />}
-            >
-              Open fork
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setForkOpen(false)}>
+              Cancel
             </Button>
-          ) : (
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setForkOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={forkResult.waiting}
-                onClick={() =>
-                  fork({
-                    payload: { sourceRfdId: rfdId, source: ref },
-                    reactivityKeys: ["catalog"],
-                  })
-                }
-              >
-                {forkResult.waiting ? "Creating fork…" : "Create fork"}
-              </Button>
-            </DialogFooter>
-          )}
-          {AsyncResult.isFailure(forkResult) ? (
+            <Button
+              type="button"
+              disabled={forkResult.waiting}
+              onClick={() => {
+                forkBaselineId.current = AsyncResult.isSuccess(forkResult)
+                  ? forkResult.value.rfdId
+                  : null;
+                setForkStarted(true);
+                fork({
+                  payload: { sourceRfdId: rfdId, source: ref },
+                  reactivityKeys: ["catalog"],
+                });
+              }}
+            >
+              {forkResult.waiting ? "Creating fork…" : "Create fork"}
+            </Button>
+          </DialogFooter>
+          {forkStarted && AsyncResult.isFailure(forkResult) ? (
             <p className="text-sm text-destructive" role="alert">
-              {"message" in forkResult.cause
-                ? String(forkResult.cause.message)
-                : "The fork could not be created."}
+              {rpcFailureMessage(forkResult.cause, "The fork could not be created.")}
             </p>
           ) : null}
         </DialogContent>
@@ -761,6 +832,7 @@ function VersionActions({
 
 function EditableDocumentHeader({
   number,
+  forkedFrom,
   author,
   headSha,
   checkpointMessage,
@@ -770,6 +842,7 @@ function EditableDocumentHeader({
   setMetadata,
 }: {
   readonly number: number;
+  readonly forkedFrom: { readonly rfdId: string; readonly number: number } | null;
   readonly author: string;
   readonly headSha: string;
   readonly checkpointMessage: string;
@@ -787,7 +860,7 @@ function EditableDocumentHeader({
 
   return (
     <header>
-      <p className="font-mono text-xs tracking-wider text-primary uppercase">RFD {number}</p>
+      <RfdEyebrow number={number} forkedFrom={forkedFrom} />
       <input
         aria-label="RFD title"
         readOnly={!canEdit}

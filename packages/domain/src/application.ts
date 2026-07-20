@@ -27,6 +27,12 @@ export const CreateRfdInput = Schema.Struct({
 });
 export type CreateRfdInput = typeof CreateRfdInput.Type;
 
+export const RfdForkSource = Schema.Struct({
+  rfdId: RfdId,
+  number: RfdNumber,
+});
+export type RfdForkSource = typeof RfdForkSource.Type;
+
 export const CommittedRfdDocument = Schema.Struct({
   rfdId: RfdId,
   number: RfdNumber,
@@ -37,6 +43,7 @@ export const CommittedRfdDocument = Schema.Struct({
   body: Schema.String,
   headSha: CommitSha,
   checkpointMessage: Schema.String,
+  forkedFrom: Schema.NullOr(RfdForkSource),
 });
 export type CommittedRfdDocument = typeof CommittedRfdDocument.Type;
 
