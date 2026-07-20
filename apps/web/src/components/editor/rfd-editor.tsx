@@ -6,8 +6,9 @@ import { Markdown } from "@tiptap/markdown";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { PlusIcon } from "@phosphor-icons/react";
-import type { CurrentUser, RfdId } from "@crdt-rfd/domain";
+import type { CurrentUser, RfdId, RfdStatus } from "@crdt-rfd/domain";
 
+import { RfdReader } from "@/components/editor/rfd-reader";
 import { useMountEffect } from "@/lib/use-mount-effect";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,21 +28,31 @@ const colorFor = (id: string) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
+export type LiveDocumentBaseline = {
+  readonly title: string;
+  readonly status: RfdStatus;
+  readonly body: string;
+  readonly authors?: readonly string[];
+};
+
 export function RfdCollaborativeDocument({
   rfdId,
   user,
+  baseline,
   onCheckpoint,
   renderMetadata,
   renderActions,
 }: {
   readonly rfdId: RfdId;
   readonly user: CurrentUser | undefined;
+  readonly baseline: LiveDocumentBaseline;
   readonly onCheckpoint: () => void;
   readonly renderMetadata: (metadata: {
     readonly title: string;
     readonly status: string;
     readonly metadata: RfdMetadata;
     readonly canEdit: boolean;
+    readonly documentReady: boolean;
     readonly setMetadata: (key: string, value: unknown) => void;
   }) => ReactNode;
   readonly renderActions: (actions: {
@@ -58,34 +69,34 @@ export function RfdCollaborativeDocument({
   );
   const metadataMap = provider.document.getMap<unknown>("metadata");
   const metadata = useYMetadata(metadataMap);
-  // Capabilities arrive with the room snapshot. Until then, the surface must
-  // remain read-only so viewers never get a brief writable editor.
   const canEdit = state.capability?.canEdit ?? false;
-  const editor = useEditor(
-    {
-      immediatelyRender: false,
-      editable: canEdit,
-      extensions: [
-        StarterKit.configure({ undoRedo: false }),
-        Markdown,
-        Collaboration.configure({ document: provider.document, field: "content" }),
-        CollaborationCaret.configure({
-          provider,
-          user: {
-            name: user?.name ?? "Viewer",
-            color: colorFor(user?.id ?? "viewer"),
-          },
-        }),
-      ],
-      editorProps: {
-        attributes: {
-          class: "document-prose min-h-[24rem] outline-none",
-          "aria-label": "RFD document body",
+  const documentReady = state.room !== null;
+  const editor = useEditor({
+    immediatelyRender: false,
+    editable: false,
+    extensions: [
+      StarterKit.configure({ undoRedo: false }),
+      Markdown,
+      Collaboration.configure({ document: provider.document, field: "content" }),
+      CollaborationCaret.configure({
+        provider,
+        user: {
+          name: user?.name ?? "Viewer",
+          color: colorFor(user?.id ?? "viewer"),
         },
+      }),
+    ],
+    editorProps: {
+      attributes: {
+        class: "document-prose min-h-[24rem] outline-none",
+        "aria-label": "RFD document body",
       },
     },
-    [canEdit],
-  );
+  });
+
+  if (editor !== null && editor.isEditable !== canEdit) {
+    editor.setEditable(canEdit);
+  }
 
   useMountEffect(() => {
     provider.awareness.setLocalStateField("user", {
@@ -105,7 +116,9 @@ export function RfdCollaborativeDocument({
   const presenceCount = provider.awareness.getStates().size;
   const roomState =
     state.connection !== "connected"
-      ? state.connection
+      ? state.connection === "connecting"
+        ? "Connecting…"
+        : "Disconnected"
       : state.checkpointPending || state.room?._tag === "Checkpointing"
         ? "Checkpointing…"
         : state.localChangePending || state.room?._tag === "Dirty"
@@ -114,54 +127,75 @@ export function RfdCollaborativeDocument({
             ? "Conflict"
             : state.room?._tag === "Clean"
               ? "Checkpointed"
-              : "Loading live document";
+              : "Connecting…";
 
   const setMetadata = (key: string, value: unknown) => metadataMap.set(key, value);
+  // Keep an intentionally cleared title empty while editing; baseline is only a
+  // pre-snapshot fallback, not a live coercion.
+  const title = metadata.title === undefined ? baseline.title : metadata.title;
+  const status = metadata.status ?? baseline.status;
+  const resolvedMetadata: RfdMetadata = {
+    ...metadata,
+    title,
+    status,
+    authors: metadata.authors ?? baseline.authors,
+  };
 
   return (
     <>
       {renderMetadata({
-        title: metadata.title ?? "",
-        status: metadata.status ?? "draft",
-        metadata,
-        canEdit,
+        title,
+        status,
+        metadata: resolvedMetadata,
+        canEdit: canEdit && documentReady,
+        documentReady,
         setMetadata,
       })}
       <div className="sticky top-14 z-30 -mx-4 mt-6 mb-8 border-b bg-background/90 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
         <div className="flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="flex min-w-0 items-center gap-3">
-            {editor === null || !canEdit ? null : (
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button type="button" size="sm" variant="outline" />}>
-                  <PlusIcon aria-hidden="true" />
-                  Insert
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem
-                    onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+            <div className="flex h-8 w-[5.75rem] shrink-0 items-center">
+              {editor !== null && canEdit && documentReady ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button type="button" size="sm" variant="outline" />}
                   >
-                    Heading
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().toggleBulletList().run()}>
-                    List
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().toggleBlockquote().run()}>
-                    Quote
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
-                    Code block
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => editor.chain().focus().setHorizontalRule().run()}
-                  >
-                    Divider
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <span className="truncate font-mono text-xs text-muted-foreground">
+                    <PlusIcon aria-hidden="true" />
+                    Insert
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem
+                      onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                    >
+                      Heading
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => editor.chain().focus().toggleBulletList().run()}
+                    >
+                      List
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => editor.chain().focus().toggleBlockquote().run()}
+                    >
+                      Quote
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+                    >
+                      Code block
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => editor.chain().focus().setHorizontalRule().run()}
+                    >
+                      Divider
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
+            <span className="min-w-40 truncate font-mono text-xs text-muted-foreground">
               {roomState}
-              {canEdit ? null : " · Read only"}
+              {canEdit || !documentReady ? null : " · Read only"}
               {presenceCount > 1
                 ? ` · ${presenceCount - 1} collaborator${presenceCount === 2 ? "" : "s"}`
                 : ""}
@@ -178,8 +212,10 @@ export function RfdCollaborativeDocument({
           {state.error}
         </p>
       )}
-      <EditorContent editor={editor} />
-      {editor === null || !canEdit ? null : (
+      <div className="min-h-[24rem]">
+        {documentReady ? <EditorContent editor={editor} /> : <RfdReader source={baseline.body} />}
+      </div>
+      {editor === null || !canEdit || !documentReady ? null : (
         <BubbleMenu editor={editor} className="editor-bubble-menu">
           <Button
             type="button"

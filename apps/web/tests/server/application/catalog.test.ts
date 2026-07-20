@@ -50,10 +50,15 @@ describe("RfdCatalog", () => {
 
   it("stores fork lineage in the catalog insert", async () => {
     const statements: Array<string> = [];
+    const statement = {
+      bind: () => statement,
+      run: async () => ({ success: true, meta: { changes: 1 }, results: [] }),
+      all: async () => ({ success: true, meta: { changes: 1 }, results: [] }),
+    };
     const database = {
-      prepare: (statement: string) => {
-        statements.push(statement);
-        return { bind: () => ({}) };
+      prepare: (sql: string) => {
+        statements.push(sql);
+        return statement;
       },
       batch: () => Promise.resolve([]),
     };
@@ -69,6 +74,7 @@ describe("RfdCatalog", () => {
         headSha: "0123456789012345678901234567890123456789" as never,
         committedSource: "---\nnumber: 2\n---\n",
         ownerUserId: "test-user" as never,
+        authorName: "Ada Lovelace",
         timestamp: 1_700_000_000_000,
         forkedFrom: {
           rfdId: "source-rfd" as never,
@@ -77,7 +83,14 @@ describe("RfdCatalog", () => {
       }),
     );
 
-    expect(statements[0]?.replace(/\s+/g, " ")).toContain(
+    expect(statements.some((statement) => statement.includes("INSERT INTO rfd_catalog"))).toBe(
+      true,
+    );
+    expect(
+      statements
+        .find((statement) => statement.includes("INSERT INTO rfd_catalog"))
+        ?.replace(/\s+/g, " "),
+    ).toContain(
       "committed_source, checkpoint_message, forked_from_rfd_id, forked_from_sha, owner_user_id",
     );
   });

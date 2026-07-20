@@ -26,6 +26,7 @@ import {
 } from "./editor/markdown";
 import { applyRoomUpdate } from "./editor/room-state";
 import { applicationRuntime } from "./server/application/runtime";
+import { proxyGitRequest } from "./server/git/proxy";
 import { connectRfdRoom } from "./server/rooms/connect";
 import { roomIdFromRequest } from "./server/rooms/path";
 import { RfdRepository } from "./server/rfds/repository";
@@ -35,6 +36,8 @@ const startFetch = createStartHandler(defaultStreamHandler);
 export default createServerEntry({
   fetch: async (...args) => {
     const [request] = args;
+    const gitResponse = await proxyGitRequest(request);
+    if (gitResponse !== null) return gitResponse;
     const rfdId = roomIdFromRequest(request);
     return rfdId === null ? startFetch(...args) : connectRfdRoom(request, rfdId);
   },
@@ -56,7 +59,7 @@ const metadataEntries = (
   metadata: EditorMetadataValue,
 ): ReadonlyArray<readonly [string, unknown]> => Object.entries(metadata);
 
-const readMetadata = (document: Y.Doc): unknown => {
+const readMetadata = (document: Y.Doc): Record<string, unknown> => {
   const metadata = document.getMap<unknown>("metadata");
   return Object.fromEntries(metadata.entries());
 };
@@ -310,9 +313,18 @@ export class RfdRoom extends DurableObject<WebsiteEnv> {
     const baseSha = this.baseSha;
     const document = this.document;
     const checkpointRevision = this.revision;
+    const rawMetadata = { ...readMetadata(document) };
+    // Empty title is allowed while editing; restore the last committed title on save.
+    if (typeof rawMetadata.title !== "string" || rawMetadata.title.trim().length === 0) {
+      const committed = await applicationRuntime.runPromise(
+        Effect.flatMap(RfdRepository, (repository) => repository.get(rfdId)),
+      );
+      rawMetadata.title = committed.title;
+      document.getMap<unknown>("metadata").set("title", committed.title);
+    }
     const prepared = await Effect.runPromiseExit(
       Effect.gen(function* () {
-        const metadata = yield* Schema.decodeUnknownEffect(EditorMetadata)(readMetadata(document));
+        const metadata = yield* Schema.decodeUnknownEffect(EditorMetadata)(rawMetadata);
         const body = yield* Effect.fromResult(serializeEditorMarkdown(yDocToEditorJson(document)));
         return serializeRfdDocument({ frontmatter: metadata, body });
       }),

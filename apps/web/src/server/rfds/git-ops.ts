@@ -244,7 +244,7 @@ export const GitRepositoryLive = Layer.succeed(
           git.commit({
             fs,
             dir: directory,
-            message: options.message ?? "Automatic checkpoint",
+            message: options.message ?? "Update RFD",
             author: { name: options.authorName, email: "rfd@crdt-rfd.invalid" },
           }),
         catch: checkpointFailure("create checkpoint commit"),

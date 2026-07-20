@@ -20,6 +20,9 @@ const transitions: Readonly<Record<RfdStatus, ReadonlySet<RfdStatus>>> = {
 export const canTransitionRfdStatus = (from: RfdStatus, to: RfdStatus): boolean =>
   transitions[from].has(to);
 
+export const nextRfdStatuses = (from: RfdStatus): ReadonlyArray<RfdStatus> =>
+  RfdStatus.literals.filter((to) => transitions[from].has(to));
+
 export const ProposalSource = Schema.TaggedUnion({
   Human: { userId: UserId },
   Agent: { model: Schema.String },
