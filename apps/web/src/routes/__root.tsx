@@ -15,7 +15,11 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "TanStack Start Starter",
+        title: "RFD · Requests for Discussion",
+      },
+      {
+        name: "description",
+        content: "Browse and search Requests for Discussion.",
       },
     ],
     links: [
@@ -36,8 +40,13 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{const t=localStorage.getItem("theme");document.documentElement.classList.toggle("dark",t==="dark"||(!t&&matchMedia("(prefers-color-scheme: dark)").matches))}catch{}`,
+          }}
+        />
         <HeadContent />
       </head>
       <body>

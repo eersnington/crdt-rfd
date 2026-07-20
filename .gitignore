@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+.alchemy/
 
 # Editor directories and files
 .vscode/*
@@ -26,3 +27,8 @@ dist-ssr
 
 # AI agent worktrees
 .claude/worktrees/
+
+
+# Env files
+.env*
+!.env.example
