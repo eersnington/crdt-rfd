@@ -23,7 +23,11 @@ const handleAuthRequest = async (auth: AuthHandler, request: Request) => {
   try {
     return await auth.handler(request);
   } catch (error) {
-    console.error("Unhandled authentication request failure", error);
+    console.error("Unhandled authentication request failure", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : "Unknown authentication failure",
+      path,
+    });
     return Response.json(
       {
         code: "AUTH_REQUEST_FAILED",

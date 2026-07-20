@@ -120,7 +120,7 @@ describe("RFD statuses", () => {
 describe("authorization", () => {
   const expected: Record<string, readonly string[]> = {
     "workspace-owner": Permission.literals,
-    author: [
+    owner: [
       "edit",
       "checkpoint",
       "comment",
@@ -129,18 +129,18 @@ describe("authorization", () => {
       "manage-members",
       "transfer-ownership",
     ],
-    coauthor: ["edit", "checkpoint", "comment", "create-proposal"],
-    reviewer: ["comment", "create-proposal"],
+    editor: ["edit", "checkpoint", "comment", "create-proposal"],
+    commenter: ["comment", "create-proposal"],
   };
-  for (const role of ["workspace-owner", "author", "coauthor", "reviewer"] as const)
+  for (const role of ["workspace-owner", "owner", "editor", "commenter"] as const)
     for (const permission of Permission.literals) {
       it(`${role}: ${permission}`, () =>
         expect(hasPermission(role, permission, { reviewerCanMerge: false })).toBe(
           expected[role]!.includes(permission),
         ));
     }
-  it("allows reviewer merge only through policy", () =>
-    expect(hasPermission("reviewer", "merge-proposal", { reviewerCanMerge: true })).toBe(true));
+  it("allows commenter merge only through policy", () =>
+    expect(hasPermission("commenter", "merge-proposal", { reviewerCanMerge: true })).toBe(true));
 });
 
 describe("frontmatter", () => {

@@ -1,6 +1,17 @@
 import {
   CatalogUnavailable,
+  CommittedRfdDocument,
+  CreateRfdInput,
+  CloneCredential,
+  ForkRfdInput,
+  ForkRfdResult,
+  GetRfdInput,
+  GetRfdRefInput,
+  MintCloneCredentialInput,
   OptionalCurrentSession,
+  RfdOperationFailed,
+  RfdCheckpoints,
+  RfdSummary,
   RfdSummaries,
   SessionUnavailable,
 } from "@crdt-rfd/domain";
@@ -15,4 +26,25 @@ export const SessionRpc = RpcGroup.make(
   Rpc.make("getCurrent").setSuccess(OptionalCurrentSession).setError(SessionUnavailable),
 ).prefix("session_");
 
-export const ApplicationRpc = RpcGroup.make().merge(CatalogRpc, SessionRpc);
+export const RfdRpc = RpcGroup.make(
+  Rpc.make("create").setPayload(CreateRfdInput).setSuccess(RfdSummary).setError(RfdOperationFailed),
+  Rpc.make("get")
+    .setPayload(GetRfdInput)
+    .setSuccess(CommittedRfdDocument)
+    .setError(RfdOperationFailed),
+  Rpc.make("getRef")
+    .setPayload(GetRfdRefInput)
+    .setSuccess(CommittedRfdDocument)
+    .setError(RfdOperationFailed),
+  Rpc.make("history")
+    .setPayload(GetRfdInput)
+    .setSuccess(RfdCheckpoints)
+    .setError(RfdOperationFailed),
+  Rpc.make("fork").setPayload(ForkRfdInput).setSuccess(ForkRfdResult).setError(RfdOperationFailed),
+  Rpc.make("cloneCredential")
+    .setPayload(MintCloneCredentialInput)
+    .setSuccess(CloneCredential)
+    .setError(RfdOperationFailed),
+).prefix("rfd_");
+
+export const ApplicationRpc = RpcGroup.make().merge(CatalogRpc, SessionRpc, RfdRpc);

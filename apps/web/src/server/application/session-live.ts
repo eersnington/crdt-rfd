@@ -1,17 +1,9 @@
 import { Effect, Layer } from "effect";
 
-import { betterAuthRuntime, BetterAuthService } from "../auth-service";
+import { BetterAuthService } from "../auth-service";
 import { makeSessionService, SessionService } from "./session";
 
-export const SessionServiceLive = Layer.succeed(
+export const SessionServiceLive = Layer.effect(
   SessionService,
-  SessionService.of(
-    makeSessionService((headers) =>
-      betterAuthRuntime.runPromise(
-        Effect.flatMap(BetterAuthService, ({ instance }) =>
-          Effect.promise(() => instance.api.getSession({ headers })),
-        ),
-      ),
-    ),
-  ),
+  Effect.map(BetterAuthService, (auth) => SessionService.of(makeSessionService(auth.getSession))),
 );

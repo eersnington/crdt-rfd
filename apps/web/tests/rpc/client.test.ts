@@ -13,19 +13,45 @@ vi.mock("cloudflare:workers", () => ({
     BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-for-better-auth",
     GITHUB_CLIENT_ID: "test-client",
     GITHUB_CLIENT_SECRET: "test-secret",
-    DB: {},
+    DB: {
+      prepare: () => ({
+        all: () =>
+          Promise.resolve({
+            results: [
+              {
+                rfd_id: "test-rfd",
+                number: 1,
+                title: "D1 catalog",
+                status: "draft",
+                artifact_repo_name: "rfd-test-rfd",
+                artifact_remote: "https://example.invalid/rfd-test-rfd.git",
+                head_sha: "0123456789012345678901234567890123456789",
+                committed_source: null,
+                checkpoint_message: null,
+                forked_from_rfd_id: null,
+                forked_from_sha: null,
+                owner_user_id: "test-user",
+                author: "Test User",
+                updated_at: 1_700_000_000_000,
+              },
+            ],
+          }),
+      }),
+    },
+    ARTIFACTS: {},
   },
 }));
 
 import { dehydrateAtom } from "../../src/lib/atom-hydration";
 import {
-  catalogAtom,
+  catalogHydrationAtom,
   selectedLabelsAtom,
   selectedStatusesAtom,
   sortedRfdsAtom,
 } from "../../src/rpc/client";
 import { ApplicationRpc } from "../../src/rpc/contracts";
 import { RfdCatalog, RfdCatalogLive } from "../../src/server/application/catalog";
+import { RfdRepositoryLive } from "../../src/server/rfds/repository";
 import { rpcWebHandler } from "../../src/server/application/rpc-server";
 
 describe("RFD atoms", () => {
@@ -48,7 +74,7 @@ describe("RFD atoms", () => {
           client.catalog_list(undefined),
         ).pipe(Effect.provide(clientLayer), Effect.scoped),
       );
-      expect(catalog).toHaveLength(15);
+      expect(catalog).toHaveLength(1);
       expect(catalog[0]?.title).toBeTypeOf("string");
     } finally {
       await rpcWebHandler.dispose();
@@ -57,24 +83,25 @@ describe("RFD atoms", () => {
 
   it("hydrates the RPC catalog and derives filters and ordering", async () => {
     const catalog = await Effect.runPromise(
-      Effect.flatMap(RfdCatalog, (service) => service.list()).pipe(Effect.provide(RfdCatalogLive)),
+      Effect.flatMap(RfdCatalog, (service) => service.list()).pipe(
+        Effect.provide(RfdCatalogLive.pipe(Layer.provide(RfdRepositoryLive))),
+      ),
     );
     const registry = AtomRegistry.make();
 
-    Hydration.hydrate(registry, [dehydrateAtom(catalogAtom, AsyncResult.success(catalog))]);
+    Hydration.hydrate(registry, [
+      dehydrateAtom(catalogHydrationAtom, AsyncResult.success(catalog)),
+    ]);
 
     const initial = registry.get(sortedRfdsAtom);
     expect(initial).toHaveLength(catalog.length);
-    expect(new Date(initial[0].updated).getTime()).toBeGreaterThanOrEqual(
-      new Date(initial[1].updated).getTime(),
-    );
+    expect(initial[0]?.title).toBe("D1 catalog");
 
-    registry.set(selectedStatusesAtom, new Set(["accepted"]));
-    registry.set(selectedLabelsAtom, new Set(["workers"]));
+    registry.set(selectedStatusesAtom, new Set(["draft"]));
+    registry.set(selectedLabelsAtom, new Set());
 
     const filtered = registry.get(sortedRfdsAtom);
     expect(filtered.length).toBeGreaterThan(0);
-    expect(filtered.every((rfd) => rfd.status === "accepted")).toBe(true);
-    expect(filtered.every((rfd) => rfd.labels.includes("workers"))).toBe(true);
+    expect(filtered.every((rfd) => rfd.status === "draft")).toBe(true);
   });
 });

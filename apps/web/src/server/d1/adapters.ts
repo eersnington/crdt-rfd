@@ -53,7 +53,8 @@ const parseRfdMembership = Effect.fn("MembershipStore.decodeRfdMembership")(func
     workspaceId: decoded.workspace_id,
     rfdId: decoded.rfd_id,
     userId: decoded.user_id,
-    role: decoded.role,
+    role:
+      decoded.role === "author" ? "owner" : decoded.role === "coauthor" ? "editor" : "commenter",
     createdAt: new Date(decoded.created_at),
     updatedAt: new Date(decoded.updated_at),
   });

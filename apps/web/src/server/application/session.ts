@@ -27,13 +27,10 @@ export interface AuthSessionValue {
 }
 
 export const makeSessionService = (
-  loadSession: (headers: globalThis.Headers) => Promise<AuthSessionValue | null>,
+  loadSession: (headers: globalThis.Headers) => Effect.Effect<AuthSessionValue | null, unknown>,
 ): SessionServiceShape => ({
   getCurrent: Effect.fn("SessionService.getCurrent")((headers: globalThis.Headers) =>
-    Effect.tryPromise({
-      try: () => loadSession(headers),
-      catch: (cause) => cause,
-    }).pipe(
+    loadSession(headers).pipe(
       Effect.tapError((cause) => Effect.logError("Better Auth session lookup failed", cause)),
       Effect.mapError(
         () =>

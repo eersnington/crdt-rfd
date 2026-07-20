@@ -15,6 +15,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { useMountEffect } from "@/lib/use-mount-effect";
 import { statusLabels, statusOrder } from "@/lib/rfd-presentation";
 import {
   activeFilterCountAtom,
@@ -109,23 +110,38 @@ export function useRfdSearch() {
 }
 
 export function RfdSearchProvider({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useAtom(searchDialogOpenAtom);
+  useMountEffect(() => {
+    const openSearch = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey)) return;
+      event.preventDefault();
+      setOpen((current) => !current);
+    };
+
+    window.addEventListener("keydown", openSearch);
+    return () => window.removeEventListener("keydown", openSearch);
+  });
+
+  return (
+    <>
+      {children}
+      {open ? <RfdSearchDialog /> : null}
+    </>
+  );
+}
+
+function RfdSearchDialog() {
   const navigate = useNavigate();
   const { open, setOpen, filters, toggle, clear, catalogItems, authors, labels } = useRfdSearch();
 
   const goTo = async (rfd: RfdSummary) => {
     clear();
     setOpen(false);
-    await navigate({ to: "/", hash: `rfd-${rfd.number}`, replace: true });
-    requestAnimationFrame(() => {
-      document
-        .getElementById(`rfd-${rfd.number}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
+    await navigate({ to: "/rfd/$rfdId", params: { rfdId: rfd.rfdId } });
   };
 
   return (
     <>
-      {children}
       <CommandDialog
         open={open}
         onOpenChange={setOpen}

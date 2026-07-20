@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { RfdId, UserId, WorkspaceId } from "./values.ts";
 
-export const RfdRole = Schema.Literals(["author", "coauthor", "reviewer"]);
+export const RfdRole = Schema.Literals(["owner", "editor", "commenter"]);
 export type RfdRole = typeof RfdRole.Type;
 export const WorkspaceRole = Schema.Literal("workspace-owner");
 export type WorkspaceRole = typeof WorkspaceRole.Type;
@@ -47,7 +47,7 @@ export type RfdMembership = typeof RfdMembership.Type;
 
 const permissions: Record<Role, ReadonlySet<Permission>> = {
   "workspace-owner": new Set(Permission.literals),
-  author: new Set([
+  owner: new Set([
     "edit",
     "checkpoint",
     "comment",
@@ -56,8 +56,8 @@ const permissions: Record<Role, ReadonlySet<Permission>> = {
     "manage-members",
     "transfer-ownership",
   ]),
-  coauthor: new Set(["edit", "checkpoint", "comment", "create-proposal"]),
-  reviewer: new Set(["comment", "create-proposal"]),
+  editor: new Set(["edit", "checkpoint", "comment", "create-proposal"]),
+  commenter: new Set(["comment", "create-proposal"]),
 };
 
 export const hasPermission = (
@@ -66,4 +66,4 @@ export const hasPermission = (
   policy: WorkspacePolicy,
 ): boolean =>
   permissions[role].has(permission) ||
-  (role === "reviewer" && permission === "merge-proposal" && policy.reviewerCanMerge);
+  (role === "commenter" && permission === "merge-proposal" && policy.reviewerCanMerge);

@@ -49,5 +49,8 @@
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
     "vite-plus": "0.2.4",
     "vitest": "4.1.10"
+  },
+  "patchedDependencies": {
+    "alchemy@2.0.0-beta.61": "patches/alchemy@2.0.0-beta.61.patch"
   }
 }

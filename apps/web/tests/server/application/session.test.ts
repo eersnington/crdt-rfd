@@ -6,10 +6,12 @@ import { makeSessionService } from "../../../src/server/application/session";
 describe("SessionService", () => {
   it("maps a Better Auth session to the stable application contract", async () => {
     const expiresAt = new Date("2026-08-01T00:00:00.000Z");
-    const service = makeSessionService(async () => ({
-      user: { id: "user_1", name: "Ada", image: null },
-      session: { expiresAt },
-    }));
+    const service = makeSessionService(() =>
+      Effect.succeed({
+        user: { id: "user_1", name: "Ada", image: null },
+        session: { expiresAt },
+      }),
+    );
 
     const session = await Effect.runPromise(service.getCurrent(new Headers()));
 
@@ -20,9 +22,7 @@ describe("SessionService", () => {
   });
 
   it("returns a structured error when Better Auth fails", async () => {
-    const service = makeSessionService(async () => {
-      throw new Error("D1 is unavailable");
-    });
+    const service = makeSessionService(() => Effect.fail(new Error("D1 is unavailable")));
 
     const result = await Effect.runPromise(Effect.result(service.getCurrent(new Headers())));
 

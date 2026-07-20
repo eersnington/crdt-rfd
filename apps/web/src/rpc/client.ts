@@ -8,7 +8,7 @@ import * as RpcClient from "effect/unstable/rpc/RpcClient";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 
 import { ApplicationRpc } from "./contracts";
-import { SessionUnavailable, type RfdStatus } from "@crdt-rfd/domain";
+import { SessionUnavailable, type CommitSha, type RfdId, type RfdStatus } from "@crdt-rfd/domain";
 import { authClient } from "../lib/auth-client";
 
 const RpcProtocolLive = RpcClient.layerProtocolHttp({ url: "/api/rpc" }).pipe(
@@ -24,9 +24,32 @@ export class ApplicationRpcClient extends AtomRpc.Service<ApplicationRpcClient>(
   },
 ) {}
 
-export const catalogAtom = ApplicationRpcClient.query("catalog_list", undefined, {
+export const catalogHydrationAtom = ApplicationRpcClient.query("catalog_list", undefined, {
   serializationKey: "all",
 });
+
+export const catalogAtom = Atom.withReactivity(["catalog"])(catalogHydrationAtom);
+
+export const createRfdAtom = ApplicationRpcClient.mutation("rfd_create");
+
+export const rfdDocumentAtom = Atom.family((rfdId: RfdId) =>
+  ApplicationRpcClient.query("rfd_get", { rfdId }, { serializationKey: rfdId }),
+);
+
+export const rfdHistoryAtom = Atom.family((rfdId: RfdId) =>
+  ApplicationRpcClient.query("rfd_history", { rfdId }, { serializationKey: rfdId }),
+);
+
+export const rfdRefAtom = Atom.family((input: { readonly rfdId: RfdId; readonly sha: CommitSha }) =>
+  ApplicationRpcClient.query(
+    "rfd_getRef",
+    { rfdId: input.rfdId, ref: { _tag: "Checkpoint", sha: input.sha } },
+    { serializationKey: `${input.rfdId}:${input.sha}` },
+  ),
+);
+
+export const forkRfdAtom = ApplicationRpcClient.mutation("rfd_fork");
+export const cloneCredentialAtom = ApplicationRpcClient.mutation("rfd_cloneCredential");
 
 export const sessionAtom = ApplicationRpcClient.query("session_getCurrent", undefined, {
   serializationKey: "current",

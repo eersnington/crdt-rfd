@@ -1,0 +1,903 @@
+import { lazy, Suspense, useState, type ReactNode } from "react";
+import {
+  HydrationBoundary,
+  RegistryProvider,
+  useAtom,
+  useAtomRefresh,
+  useAtomValue,
+} from "@effect/atom-react";
+import {
+  CaretDownIcon,
+  CheckIcon,
+  ClockCounterClockwiseIcon,
+  CopyIcon,
+  PencilSimpleIcon,
+} from "@phosphor-icons/react";
+import { BranchName, RfdId, type CommitSha, type RfdRef } from "@crdt-rfd/domain";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { Result, Schema } from "effect";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
+
+import { RfdHeader } from "@/components/rfd-header";
+import { RfdSearchProvider } from "@/components/rfd-search";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { RfdReader } from "@/components/editor/rfd-reader";
+import { useMountEffect } from "@/lib/use-mount-effect";
+import {
+  rfdDocumentAtom,
+  rfdHistoryAtom,
+  rfdRefAtom,
+  cloneCredentialAtom,
+  forkRfdAtom,
+  sessionAtom,
+  signOutAtom,
+} from "@/rpc/client";
+import { getRfdInitialApplicationState } from "@/server/application/initial-state";
+
+const loadCollaborativeDocument = () =>
+  import("@/components/editor/rfd-editor").then((module) => ({
+    default: module.RfdCollaborativeDocument,
+  }));
+
+const RfdCollaborativeDocument = lazy(loadCollaborativeDocument);
+const mainBranch = Schema.decodeUnknownSync(BranchName)("main");
+
+// Page-level document actions speak in the same mono-uppercase voice as the
+// catalog's primary actions and the metadata eyebrows.
+const actionButtonClass = "font-mono text-xs uppercase tracking-wider";
+
+export const Route = createFileRoute("/rfd/$rfdId")({
+  loader: ({ params }) => getRfdInitialApplicationState({ data: { rfdId: params.rfdId } }),
+  component: RfdPage,
+});
+
+function RfdPage() {
+  const state = Route.useLoaderData();
+
+  return (
+    <RegistryProvider defaultIdleTTL={60_000}>
+      <HydrationBoundary state={state}>
+        <RfdSearchProvider>
+          <RfdPageChrome />
+          <RfdRoute />
+        </RfdSearchProvider>
+      </HydrationBoundary>
+    </RegistryProvider>
+  );
+}
+
+function RfdPageChrome() {
+  const session = useAtomValue(sessionAtom);
+  const [signOutResult, signOut] = useAtom(signOutAtom);
+  const signedIn = AsyncResult.isSuccess(session) && session.value !== null;
+
+  return (
+    <RfdHeader signedIn={signedIn} signingOut={signOutResult.waiting} onSignOut={() => signOut()} />
+  );
+}
+
+function RfdRoute() {
+  const { rfdId } = Route.useParams();
+  const decoded = Schema.decodeUnknownResult(RfdId)(rfdId);
+
+  return Result.isSuccess(decoded) ? (
+    <RfdDocument rfdId={decoded.success} />
+  ) : (
+    <DocumentMessage message="This RFD link is invalid." />
+  );
+}
+
+function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
+  const document = useAtomValue(rfdDocumentAtom(rfdId));
+  const refreshDocument = useAtomRefresh(rfdDocumentAtom(rfdId));
+  const prefetchHistory = useAtomRefresh(rfdHistoryAtom(rfdId));
+  const session = useAtomValue(sessionAtom);
+  const [live, setLive] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState<CommitSha | null>(null);
+  const [checkpointDialogOpen, setCheckpointDialogOpen] = useState(false);
+  const [checkpointMessage, setCheckpointMessage] = useState("");
+
+  if (AsyncResult.isFailure(document)) {
+    return <DocumentMessage message="The committed RFD could not be loaded. Try again shortly." />;
+  }
+  if (!AsyncResult.isSuccess(document)) {
+    return <DocumentMessage message="Loading committed RFD…" />;
+  }
+  const user = AsyncResult.isSuccess(session) ? session.value?.user : undefined;
+  const committed = document.value;
+
+  if (selectedCheckpoint !== null) {
+    return (
+      <HistoricalRfdDocument
+        rfdId={rfdId}
+        sha={selectedCheckpoint}
+        onReturn={() => setSelectedCheckpoint(null)}
+        onSelect={(next) => setSelectedCheckpoint(next)}
+      />
+    );
+  }
+
+  if (live) {
+    return (
+      <main className="min-h-svh bg-background">
+        <article className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-6 sm:pt-14 sm:pb-24">
+          <Suspense fallback={<LiveDocumentPlaceholder committed={committed} />}>
+            <RfdCollaborativeDocument
+              key={rfdId}
+              rfdId={rfdId}
+              user={user}
+              onCheckpoint={refreshDocument}
+              renderMetadata={({ title, metadata, canEdit, setMetadata }) => (
+                <EditableDocumentHeader
+                  number={committed.number}
+                  author={committed.author}
+                  headSha={committed.headSha}
+                  checkpointMessage={committed.checkpointMessage}
+                  title={title || committed.title}
+                  metadata={metadata}
+                  canEdit={canEdit}
+                  setMetadata={setMetadata}
+                />
+              )}
+              renderActions={({ checkpoint, canPublish, roomState }) => (
+                <>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      type="button"
+                      className={actionButtonClass}
+                      disabled={!canPublish}
+                      onClick={() => setCheckpointDialogOpen(true)}
+                    >
+                      {roomState === "Checkpointing…" ? "Checkpointing…" : "Checkpoint"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={actionButtonClass}
+                      onClick={() => setLive(false)}
+                    >
+                      Close live view
+                    </Button>
+                  </div>
+                  <Dialog open={checkpointDialogOpen} onOpenChange={setCheckpointDialogOpen}>
+                    <DialogContent showCloseButton={false}>
+                      <DialogHeader>
+                        <DialogTitle>Create checkpoint</DialogTitle>
+                        <DialogDescription>
+                          Save the current document to Git. A message makes this checkpoint easier
+                          to find in history.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <Input
+                        autoFocus
+                        aria-label="Checkpoint message"
+                        maxLength={200}
+                        placeholder="Describe this change (optional)"
+                        value={checkpointMessage}
+                        onChange={(event) => setCheckpointMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          checkpoint(checkpointMessage.trim() || undefined);
+                          setCheckpointMessage("");
+                          setCheckpointDialogOpen(false);
+                        }}
+                      />
+                      <DialogFooter>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setCheckpointDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={roomState === "Checkpointing…"}
+                          onClick={() => {
+                            checkpoint(checkpointMessage.trim() || undefined);
+                            setCheckpointMessage("");
+                            setCheckpointDialogOpen(false);
+                          }}
+                        >
+                          Save checkpoint
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              )}
+            />
+          </Suspense>
+        </article>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-svh bg-background">
+      <article className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-6 sm:pt-14 sm:pb-24">
+        <header>
+          <p className="font-mono text-xs tracking-wider text-primary uppercase">
+            RFD {committed.number}
+          </p>
+          <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
+            {committed.title}
+          </h1>
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              className={actionButtonClass}
+              onPointerEnter={() => void loadCollaborativeDocument()}
+              onFocus={() => void loadCollaborativeDocument()}
+              onClick={() => setLive(true)}
+            >
+              <PencilSimpleIcon aria-hidden="true" />
+              Edit
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className={actionButtonClass}
+              onPointerEnter={prefetchHistory}
+              onFocus={prefetchHistory}
+              onClick={() => {
+                prefetchHistory();
+                setHistoryOpen(true);
+              }}
+            >
+              <ClockCounterClockwiseIcon aria-hidden="true" />
+              History
+            </Button>
+            <VersionActions rfdId={rfdId} ref={{ _tag: "Branch", branch: mainBranch }} canFork />
+          </div>
+          <dl className="mt-8">
+            <PropertyRow label="Author">{committed.author}</PropertyRow>
+            <PropertyRow label="Updated">
+              {new Date(committed.updated).toLocaleString()}
+            </PropertyRow>
+            <PropertyRow label="Checkpoint">
+              <span className="font-mono text-xs">{committed.headSha.slice(0, 8)}</span>
+              <span className="text-muted-foreground"> · {committed.checkpointMessage}</span>
+              <span
+                aria-label="Latest checkpoint"
+                className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
+              />
+            </PropertyRow>
+          </dl>
+        </header>
+        <RfdReader source={committed.body} />
+      </article>
+      <HistoryPrefetch rfdId={rfdId} />
+      {historyOpen ? (
+        <RfdHistory
+          rfdId={rfdId}
+          latest={{
+            sha: committed.headSha,
+            author: committed.author,
+            updated: committed.updated,
+            message: committed.checkpointMessage,
+          }}
+          viewingSha={committed.headSha}
+          onClose={() => setHistoryOpen(false)}
+          onSelect={(sha) => {
+            setSelectedCheckpoint(sha);
+            setHistoryOpen(false);
+          }}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function PropertyRow({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline gap-4 border-t py-2.5 last:border-b">
+      <dt className="w-20 shrink-0 font-mono text-[11px] tracking-wider text-muted-foreground uppercase sm:w-24">
+        {label}
+      </dt>
+      <dd className="min-w-0 flex-1 text-sm">{children}</dd>
+    </div>
+  );
+}
+
+function LiveDocumentPlaceholder({
+  committed,
+}: {
+  readonly committed: {
+    readonly number: number;
+    readonly title: string;
+    readonly author: string;
+    readonly headSha: string;
+    readonly checkpointMessage: string;
+  };
+}) {
+  return (
+    <>
+      <header>
+        <p className="font-mono text-xs tracking-wider text-primary uppercase">
+          {committed.number > 0 ? `RFD ${committed.number}` : "Loading checkpoint"}
+        </p>
+        <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
+          {committed.title}
+        </h1>
+        <dl className="mt-8">
+          <PropertyRow label="Author">
+            {committed.author === "" ? <Skeleton className="h-4 w-36" /> : committed.author}
+          </PropertyRow>
+          <PropertyRow label="Checkpoint">
+            <span className="font-mono text-xs">{committed.headSha.slice(0, 8)}</span>
+            {committed.checkpointMessage === "" ? null : (
+              <span className="text-muted-foreground"> · {committed.checkpointMessage}</span>
+            )}
+          </PropertyRow>
+        </dl>
+      </header>
+      <Skeleton className="mt-10 min-h-[24rem]" aria-label="Loading live document" />
+    </>
+  );
+}
+
+function HistoryPrefetch({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
+  const prefetchHistory = useAtomRefresh(rfdHistoryAtom(rfdId));
+
+  useMountEffect(() => {
+    const timer = window.setTimeout(prefetchHistory, 500);
+    return () => window.clearTimeout(timer);
+  });
+
+  return null;
+}
+
+function RfdHistory({
+  rfdId,
+  latest,
+  viewingSha,
+  onClose,
+  onSelect,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly latest: {
+    readonly sha: CommitSha;
+    readonly message: string;
+    readonly author: string;
+    readonly updated: string;
+  };
+  readonly viewingSha: CommitSha;
+  readonly onClose: () => void;
+  readonly onSelect: (sha: CommitSha) => void;
+}) {
+  const history = useAtomValue(rfdHistoryAtom(rfdId));
+  const earlier = AsyncResult.isSuccess(history)
+    ? history.value.filter((checkpoint) => checkpoint.sha !== latest.sha)
+    : [];
+
+  return (
+    <Drawer open direction="right" onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DrawerContent aria-label="RFD history">
+        <DrawerHeader className="flex-row items-start justify-between gap-4 border-b">
+          <div>
+            <p className="font-mono text-[11px] tracking-wider text-primary uppercase">
+              Git history
+            </p>
+            <DrawerTitle className="mt-1">Checkpoints</DrawerTitle>
+          </div>
+          <DrawerClose asChild>
+            <Button type="button" variant="outline">
+              Close
+            </Button>
+          </DrawerClose>
+        </DrawerHeader>
+        <div className="min-h-0 overflow-y-auto px-6">
+          <ol className="divide-y">
+            <li>
+              <CheckpointRow
+                message={latest.message}
+                author={latest.author}
+                when={latest.updated}
+                sha={latest.sha}
+                isLatest
+                isViewing={viewingSha === latest.sha}
+                onClick={() => onSelect(latest.sha)}
+              />
+            </li>
+            {AsyncResult.isFailure(history) ? (
+              <li className="pt-6 text-sm text-destructive">
+                History could not be loaded. Try again shortly.
+              </li>
+            ) : !AsyncResult.isSuccess(history) ? (
+              <li className="py-4 text-sm text-muted-foreground">Loading earlier checkpoints…</li>
+            ) : (
+              earlier.map((checkpoint) => (
+                <li key={checkpoint.sha}>
+                  <CheckpointRow
+                    message={checkpoint.message}
+                    author={checkpoint.author}
+                    when={checkpoint.createdAt}
+                    sha={checkpoint.sha}
+                    isViewing={viewingSha === checkpoint.sha}
+                    onClick={() => onSelect(checkpoint.sha)}
+                  />
+                </li>
+              ))
+            )}
+          </ol>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function CheckpointRow({
+  message,
+  author,
+  when,
+  sha,
+  isLatest = false,
+  isViewing = false,
+  onClick,
+}: {
+  readonly message: string;
+  readonly author: string;
+  readonly when: string;
+  readonly sha: CommitSha;
+  readonly isLatest?: boolean;
+  readonly isViewing?: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="block w-full py-4 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent/50"
+      onClick={onClick}
+      aria-current={isViewing ? "true" : undefined}
+    >
+      <p className="text-sm font-medium text-foreground">{message}</p>
+      <p className="mt-1 font-mono text-xs text-muted-foreground">
+        {author} · {new Date(when).toLocaleString()} · {sha.slice(0, 8)}
+        {isLatest ? (
+          <span
+            aria-label="Latest checkpoint"
+            className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
+          />
+        ) : null}
+        {isViewing ? (
+          <span
+            aria-label="Currently viewing"
+            className="ml-2 inline-block size-2 rounded-full bg-status-superseded align-middle"
+          />
+        ) : null}
+      </p>
+    </button>
+  );
+}
+
+function HistoricalRfdDocument({
+  rfdId,
+  sha,
+  onReturn,
+  onSelect,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly sha: CommitSha;
+  readonly onReturn: () => void;
+  readonly onSelect: (sha: CommitSha) => void;
+}) {
+  const document = useAtomValue(rfdRefAtom({ rfdId, sha }));
+  const latest = useAtomValue(rfdDocumentAtom(rfdId));
+  const prefetchHistory = useAtomRefresh(rfdHistoryAtom(rfdId));
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const latestDoc = AsyncResult.isSuccess(latest) ? latest.value : null;
+
+  return (
+    <main className="min-h-svh bg-background">
+      <article className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-6 sm:pt-14 sm:pb-24">
+        <p className="border-l-2 border-primary bg-primary/5 px-3 py-2 font-mono text-xs text-foreground">
+          Viewing checkpoint {sha.slice(0, 8)} — a read-only snapshot of this RFD.
+        </p>
+        {AsyncResult.isFailure(document) ? (
+          <p
+            className="mt-8 border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+            role="alert"
+          >
+            This checkpoint could not be loaded. The latest RFD remains available.
+          </p>
+        ) : !AsyncResult.isSuccess(document) ? (
+          <div className="mt-8">
+            <LiveDocumentPlaceholder
+              committed={{
+                number: 0,
+                title: "Loading checkpoint",
+                author: "",
+                headSha: sha,
+                checkpointMessage: "",
+              }}
+            />
+          </div>
+        ) : (
+          <header className="mt-8">
+            <p className="font-mono text-xs tracking-wider text-primary uppercase">
+              RFD {document.value.number}
+            </p>
+            <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
+              {document.value.title}
+            </h1>
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              <Button type="button" className={actionButtonClass} onClick={onReturn}>
+                Return to latest
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className={actionButtonClass}
+                onPointerEnter={prefetchHistory}
+                onFocus={prefetchHistory}
+                onClick={() => {
+                  prefetchHistory();
+                  setHistoryOpen(true);
+                }}
+              >
+                <ClockCounterClockwiseIcon aria-hidden="true" />
+                History
+              </Button>
+              <VersionActions rfdId={rfdId} ref={{ _tag: "Checkpoint", sha }} />
+            </div>
+            <dl className="mt-8">
+              <PropertyRow label="Author">{document.value.author}</PropertyRow>
+              <PropertyRow label="Updated">
+                {new Date(document.value.updated).toLocaleString()}
+              </PropertyRow>
+              <PropertyRow label="Checkpoint">
+                <span className="font-mono text-xs">{sha.slice(0, 8)}</span>
+                <span className="text-muted-foreground"> · {document.value.checkpointMessage}</span>
+                <span
+                  aria-label="Currently viewing"
+                  className="ml-2 inline-block size-2 rounded-full bg-status-superseded align-middle"
+                />
+              </PropertyRow>
+            </dl>
+          </header>
+        )}
+        {AsyncResult.isSuccess(document) ? <RfdReader source={document.value.body} /> : null}
+      </article>
+      <HistoryPrefetch rfdId={rfdId} />
+      {historyOpen && latestDoc !== null ? (
+        <RfdHistory
+          rfdId={rfdId}
+          latest={{
+            sha: latestDoc.headSha,
+            author: latestDoc.author,
+            updated: latestDoc.updated,
+            message: latestDoc.checkpointMessage,
+          }}
+          viewingSha={sha}
+          onClose={() => setHistoryOpen(false)}
+          onSelect={(next) => {
+            setHistoryOpen(false);
+            if (next === latestDoc.headSha) onReturn();
+            else if (next !== sha) onSelect(next);
+          }}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function VersionActions({
+  rfdId,
+  ref,
+  canFork = false,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly ref: RfdRef;
+  readonly canFork?: boolean;
+}) {
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [forkOpen, setForkOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [cloneResult, mintCloneCredential] = useAtom(cloneCredentialAtom);
+  const [forkResult, fork] = useAtom(forkRfdAtom);
+  const refLabel = ref._tag === "Branch" ? ref.branch : ref.sha.slice(0, 8);
+  const credential = AsyncResult.isSuccess(cloneResult) ? cloneResult.value : null;
+  const cloneCommand =
+    credential === null
+      ? null
+      : credential.remote.replace(
+          /^https:\/\//,
+          `https://${credential.username}:${credential.token}@`,
+        );
+
+  const copyCloneCommand = () => {
+    if (cloneCommand === null) return;
+    void navigator.clipboard.writeText(`git clone ${cloneCommand}`).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1000);
+    });
+  };
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button type="button" variant="outline" className={actionButtonClass} />}
+        >
+          Actions
+          <CaretDownIcon aria-hidden="true" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onClick={() => setCloneOpen(true)}>Clone {refLabel}</DropdownMenuItem>
+          {canFork ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setForkOpen(true)}>Fork RFD</DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog
+        open={cloneOpen}
+        onOpenChange={(open) => {
+          setCloneOpen(open);
+          if (!open) setCopied(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clone {refLabel}</DialogTitle>
+            <DialogDescription>
+              Generate a read-only Git credential for this version. It expires after five minutes.
+            </DialogDescription>
+          </DialogHeader>
+          {credential === null ? (
+            <Button
+              type="button"
+              disabled={cloneResult.waiting}
+              onClick={() => mintCloneCredential({ payload: { rfdId, ref } })}
+            >
+              {cloneResult.waiting ? "Generating…" : "Generate credential"}
+            </Button>
+          ) : (
+            <div className="grid gap-2">
+              <code className="block overflow-x-auto border bg-muted/40 p-3 font-mono text-xs whitespace-nowrap text-foreground">
+                git clone {cloneCommand}
+              </code>
+              <p className="text-xs text-muted-foreground">
+                Read-only access expires {new Date(credential.expiresAt).toLocaleTimeString()}.
+              </p>
+              <Button type="button" variant="outline" onClick={copyCloneCommand}>
+                {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+                {copied ? "Copied" : "Copy command"}
+              </Button>
+            </div>
+          )}
+          {AsyncResult.isFailure(cloneResult) ? (
+            <p className="text-sm text-destructive" role="alert">
+              {"message" in cloneResult.cause
+                ? String(cloneResult.cause.message)
+                : "The clone credential could not be generated."}
+            </p>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={forkOpen} onOpenChange={setForkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Fork this RFD</DialogTitle>
+            <DialogDescription>
+              Creates a new RFD and independent Artifacts repository from {refLabel}. The source
+              stays unchanged.
+            </DialogDescription>
+          </DialogHeader>
+          {AsyncResult.isSuccess(forkResult) ? (
+            <Button
+              nativeButton={false}
+              render={<Link to="/rfd/$rfdId" params={{ rfdId: forkResult.value.rfdId }} />}
+            >
+              Open fork
+            </Button>
+          ) : (
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setForkOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={forkResult.waiting}
+                onClick={() =>
+                  fork({
+                    payload: { sourceRfdId: rfdId, source: ref },
+                    reactivityKeys: ["catalog"],
+                  })
+                }
+              >
+                {forkResult.waiting ? "Creating fork…" : "Create fork"}
+              </Button>
+            </DialogFooter>
+          )}
+          {AsyncResult.isFailure(forkResult) ? (
+            <p className="text-sm text-destructive" role="alert">
+              {"message" in forkResult.cause
+                ? String(forkResult.cause.message)
+                : "The fork could not be created."}
+            </p>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function EditableDocumentHeader({
+  number,
+  author,
+  headSha,
+  checkpointMessage,
+  title,
+  metadata,
+  canEdit,
+  setMetadata,
+}: {
+  readonly number: number;
+  readonly author: string;
+  readonly headSha: string;
+  readonly checkpointMessage: string;
+  readonly title: string;
+  readonly metadata: {
+    readonly authors?: readonly string[];
+    readonly reviewers?: readonly string[];
+    readonly related?: readonly number[];
+    readonly supersedes?: readonly number[];
+  };
+  readonly canEdit: boolean;
+  readonly setMetadata: (key: string, value: unknown) => void;
+}) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  return (
+    <header>
+      <p className="font-mono text-xs tracking-wider text-primary uppercase">RFD {number}</p>
+      <input
+        aria-label="RFD title"
+        readOnly={!canEdit}
+        className="mt-3 w-full bg-transparent text-balance font-heading text-4xl leading-tight outline-none focus-visible:ring-1 focus-visible:ring-ring/50 sm:text-5xl"
+        value={title}
+        onChange={(event) => setMetadata("title", event.target.value)}
+      />
+      <dl className="mt-6">
+        <PropertyRow label="Author">{author}</PropertyRow>
+        <PropertyRow label="Checkpoint">
+          <span className="font-mono text-xs">{headSha.slice(0, 8)}</span>
+          <span className="text-muted-foreground"> · {checkpointMessage}</span>
+        </PropertyRow>
+      </dl>
+      <button
+        type="button"
+        className="mt-4 font-mono text-[11px] tracking-wider text-muted-foreground uppercase underline-offset-4 hover:text-foreground hover:underline"
+        onClick={() => setDetailsOpen((open) => !open)}
+      >
+        Document details
+      </button>
+      {detailsOpen ? (
+        <dl className="mt-4 grid gap-4 border-t pt-4 sm:grid-cols-2">
+          <MetadataListInput
+            label="Authors"
+            value={metadata.authors?.join(", ") ?? ""}
+            canEdit={canEdit}
+            onCommit={(items) => setMetadata("authors", items)}
+          />
+          <MetadataListInput
+            label="Reviewers"
+            value={metadata.reviewers?.join(", ") ?? ""}
+            canEdit={canEdit}
+            onCommit={(items) => setMetadata("reviewers", items)}
+          />
+          <MetadataListInput
+            label="Related RFD numbers"
+            value={metadata.related?.join(", ") ?? ""}
+            canEdit={canEdit}
+            onCommit={(items) =>
+              setMetadata(
+                "related",
+                items.flatMap((item) => {
+                  const number = Number(item);
+                  return Number.isInteger(number) && number > 0 ? [number] : [];
+                }),
+              )
+            }
+          />
+          <MetadataListInput
+            label="Supersedes RFD numbers"
+            value={metadata.supersedes?.join(", ") ?? ""}
+            canEdit={canEdit}
+            onCommit={(items) =>
+              setMetadata(
+                "supersedes",
+                items.flatMap((item) => {
+                  const number = Number(item);
+                  return Number.isInteger(number) && number > 0 ? [number] : [];
+                }),
+              )
+            }
+          />
+        </dl>
+      ) : null}
+    </header>
+  );
+}
+
+function MetadataListInput({
+  label,
+  value,
+  canEdit,
+  onCommit,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly canEdit: boolean;
+  readonly onCommit: (items: string[]) => void;
+}) {
+  return (
+    <label className="block font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
+      {label}
+      <input
+        key={value}
+        readOnly={!canEdit}
+        className="mt-1.5 w-full border bg-background px-3 py-2 font-sans text-sm tracking-normal text-foreground normal-case outline-none focus:border-primary focus-visible:ring-1 focus-visible:ring-ring/50"
+        defaultValue={value}
+        onBlur={(event) =>
+          onCommit(
+            event.target.value
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean),
+          )
+        }
+      />
+    </label>
+  );
+}
+
+function DocumentMessage({ message }: { readonly message: string }) {
+  return (
+    <main className="grid min-h-[calc(100svh-3.5rem)] place-items-center bg-background px-4 text-center">
+      <div>
+        <p className="text-sm text-muted-foreground">{message}</p>
+        <Link to="/" className="mt-4 inline-block font-mono text-xs text-primary uppercase">
+          Return to the catalog
+        </Link>
+      </div>
+    </main>
+  );
+}

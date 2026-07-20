@@ -11,7 +11,11 @@ describe("membership loading", () => {
     const entries = new Map([
       [
         "u1:w1:r1",
-        { workspaceOwner: false, rfdRole: "reviewer" as const, policy: { reviewerCanMerge: true } },
+        {
+          workspaceOwner: false,
+          rfdRole: "commenter" as const,
+          policy: { reviewerCanMerge: true },
+        },
       ],
     ]);
     const memberships = await Effect.runPromise(
