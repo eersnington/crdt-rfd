@@ -31,7 +31,7 @@ export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
   },
   assets: {
     notFoundHandling: "404-page",
-    runWorkerFirst: false,
+    runWorkerFirst: ["/git/*", "/api/*"],
   },
   env: {
     DB: RfdDatabase,

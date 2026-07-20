@@ -28,6 +28,8 @@ import {
 } from "@crdt-rfd/domain";
 import { Clock, Context, Effect, Layer, Schema } from "effect";
 
+import { cloudflareEnv } from "../env";
+import { publicCloneRemote } from "../git/public-remote";
 import { ArtifactStore, ArtifactStoreLive } from "./artifacts";
 import { RfdCatalogStore, RfdCatalogStoreLive } from "./catalog-d1";
 import { GitRepository, GitRepositoryLive } from "./git-ops";
@@ -588,7 +590,11 @@ const RfdRepositoryLayer = Layer.effect(
         );
       const timestamp = yield* Clock.currentTimeMillis;
       return yield* Schema.decodeUnknownEffect(CloneCredential)({
-        remote: record.artifactRemote,
+        remote: publicCloneRemote({
+          appOrigin: cloudflareEnv.APP_ORIGIN,
+          artifactRepoName: record.artifactRepoName,
+          artifactRemote: record.artifactRemote,
+        }),
         username: "x",
         token,
         expiresAt: new Date(timestamp + 300_000).toISOString(),

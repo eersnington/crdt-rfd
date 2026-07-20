@@ -26,6 +26,7 @@ import {
 } from "./editor/markdown";
 import { applyRoomUpdate } from "./editor/room-state";
 import { applicationRuntime } from "./server/application/runtime";
+import { proxyGitRequest } from "./server/git/proxy";
 import { connectRfdRoom } from "./server/rooms/connect";
 import { roomIdFromRequest } from "./server/rooms/path";
 import { RfdRepository } from "./server/rfds/repository";
@@ -35,6 +36,8 @@ const startFetch = createStartHandler(defaultStreamHandler);
 export default createServerEntry({
   fetch: async (...args) => {
     const [request] = args;
+    const gitResponse = await proxyGitRequest(request);
+    if (gitResponse !== null) return gitResponse;
     const rfdId = roomIdFromRequest(request);
     return rfdId === null ? startFetch(...args) : connectRfdRoom(request, rfdId);
   },

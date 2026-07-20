@@ -100,6 +100,9 @@ export interface RfdCatalogStoreShape {
   readonly getRecord: (
     rfdId: RfdIdValue,
   ) => Effect.Effect<CatalogRecord | null, CatalogQueryFailed | InvalidCatalogRecord>;
+  readonly getByArtifactRepoName: (
+    artifactRepoName: string,
+  ) => Effect.Effect<CatalogRecord | null, CatalogQueryFailed | InvalidCatalogRecord>;
   readonly allocateNumber: () => Effect.Effect<RfdNumberValue, RfdNumberAllocationFailed>;
   readonly loadGithubLogin: (
     userId: UserIdValue,
@@ -162,6 +165,23 @@ const toSummary = (row: typeof CatalogRow.Type) =>
     labels: [],
   });
 
+const toRecord = (row: typeof CatalogRow.Type): CatalogRecord => ({
+  rfdId: row.rfd_id,
+  number: row.number,
+  title: row.title,
+  status: row.status,
+  artifactRepoName: row.artifact_repo_name,
+  artifactRemote: row.artifact_remote,
+  headSha: row.head_sha,
+  committedSource: row.committed_source,
+  checkpointMessage: row.checkpoint_message,
+  forkedFromRfdId: row.forked_from_rfd_id,
+  forkedFromSha: row.forked_from_sha,
+  ownerUserId: row.owner_user_id,
+  author: row.author,
+  updated: new Date(row.updated_at).toISOString(),
+});
+
 export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape => ({
   list: Effect.fn("RfdCatalogStore.list")(function* () {
     const result = yield* query("list catalog", () =>
@@ -178,23 +198,21 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
     );
     if (value === null) return null;
     const row = yield* decodeRow("get catalog record", value);
-    return {
-      rfdId: row.rfd_id,
-      number: row.number,
-      title: row.title,
-      status: row.status,
-      artifactRepoName: row.artifact_repo_name,
-      artifactRemote: row.artifact_remote,
-      headSha: row.head_sha,
-      committedSource: row.committed_source,
-      checkpointMessage: row.checkpoint_message,
-      forkedFromRfdId: row.forked_from_rfd_id,
-      forkedFromSha: row.forked_from_sha,
-      ownerUserId: row.owner_user_id,
-      author: row.author,
-      updated: new Date(row.updated_at).toISOString(),
-    };
+    return toRecord(row);
   }),
+  getByArtifactRepoName: Effect.fn("RfdCatalogStore.getByArtifactRepoName")(
+    function* (artifactRepoName) {
+      const value = yield* query("get catalog by artifact repo", () =>
+        database
+          .prepare(`${selectColumns} WHERE r.artifact_repo_name = ?`)
+          .bind(artifactRepoName)
+          .first(),
+      );
+      if (value === null) return null;
+      const row = yield* decodeRow("get catalog by artifact repo", value);
+      return toRecord(row);
+    },
+  ),
   allocateNumber: Effect.fn("RfdCatalogStore.allocateNumber")(function* () {
     const row = yield* query("allocate RFD number", () =>
       database
