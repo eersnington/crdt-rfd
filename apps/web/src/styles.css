@@ -151,14 +151,17 @@
 }
 
 @layer components {
+  .document-prose {
+    @apply text-base leading-7 text-foreground;
+  }
   .document-prose h1 {
     @apply mt-10 mb-4 font-heading text-4xl leading-tight;
   }
   .document-prose h2 {
-    @apply mt-9 mb-3 font-heading text-2xl;
+    @apply mt-9 mb-3 font-heading text-2xl leading-snug;
   }
   .document-prose h3 {
-    @apply mt-7 mb-2 font-heading text-xl;
+    @apply mt-7 mb-2 font-heading text-xl leading-snug;
   }
   .document-prose p {
     @apply my-4;
@@ -176,10 +179,13 @@
     @apply my-10 border-0 border-t border-primary/40;
   }
   .document-prose pre {
-    @apply my-5 overflow-x-auto border bg-muted p-4 font-mono text-sm;
+    @apply my-5 overflow-x-auto border bg-muted p-4 font-mono text-sm leading-6;
   }
   .document-prose code:not(pre code) {
-    @apply bg-muted px-1 py-0.5 font-mono text-sm;
+    @apply bg-muted px-1 py-0.5 font-mono text-[0.9em];
+  }
+  .document-prose a {
+    @apply text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary;
   }
   .editor-bubble-menu {
     @apply flex items-center gap-0.5 border bg-popover p-1 shadow-sm;

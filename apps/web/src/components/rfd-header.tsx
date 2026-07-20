@@ -24,7 +24,7 @@ export function RfdHeader({
           to="/"
           className="group flex items-center gap-2.5 outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
         >
-          <span className="inline-flex size-8 shrink-0 items-center justify-center border border-primary bg-primary text-primary-foreground transition-colors group-hover:bg-primary/80">
+          <span className="inline-flex size-9 shrink-0 items-center justify-center border border-primary bg-primary text-primary-foreground transition-colors group-hover:bg-primary/80">
             <TreeStructureIcon size={18} aria-hidden="true" />
           </span>
           <span className="font-mono text-sm font-medium tracking-[0.2em] text-primary">RFD</span>
@@ -36,22 +36,17 @@ export function RfdHeader({
         <div className="flex items-center gap-2">
           <Button
             type="button"
+            variant="outline"
             onClick={() => setOpen(true)}
             aria-label="Search RFDs"
             aria-keyshortcuts="Meta+K Control+K"
-            variant={"outline"}
-            className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
           >
-            <MagnifyingGlassIcon size={16} aria-hidden="true" />
-            <span className="hidden text-xs sm:inline">Search</span>
+            <MagnifyingGlassIcon aria-hidden="true" />
+            <span className="hidden sm:inline">Search</span>
           </Button>
           <ThemeToggle />
           {signedIn ? (
-            <Button
-              className="px-2 text-xs sm:px-4 sm:text-sm"
-              disabled={signingOut}
-              onClick={onSignOut}
-            >
+            <Button disabled={signingOut} onClick={onSignOut}>
               {signingOut ? "Signing out…" : "Sign out"}
             </Button>
           ) : (

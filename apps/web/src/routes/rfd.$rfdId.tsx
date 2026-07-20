@@ -1,20 +1,25 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import {
   HydrationBoundary,
   RegistryProvider,
   useAtom,
   useAtomRefresh,
-  useAtomSet,
   useAtomValue,
 } from "@effect/atom-react";
-import { MagnifyingGlassIcon, TreeStructureIcon } from "@phosphor-icons/react";
+import {
+  CaretDownIcon,
+  CheckIcon,
+  ClockCounterClockwiseIcon,
+  CopyIcon,
+  PencilSimpleIcon,
+} from "@phosphor-icons/react";
 import { BranchName, RfdId, type CommitSha, type RfdRef } from "@crdt-rfd/domain";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Result, Schema } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 
+import { RfdHeader } from "@/components/rfd-header";
 import { RfdSearchProvider } from "@/components/rfd-search";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,7 +53,6 @@ import {
   rfdRefAtom,
   cloneCredentialAtom,
   forkRfdAtom,
-  searchDialogOpenAtom,
   sessionAtom,
   signOutAtom,
 } from "@/rpc/client";
@@ -61,6 +65,10 @@ const loadCollaborativeDocument = () =>
 
 const RfdCollaborativeDocument = lazy(loadCollaborativeDocument);
 const mainBranch = Schema.decodeUnknownSync(BranchName)("main");
+
+// Page-level document actions speak in the same mono-uppercase voice as the
+// catalog's primary actions and the metadata eyebrows.
+const actionButtonClass = "font-mono text-xs uppercase tracking-wider";
 
 export const Route = createFileRoute("/rfd/$rfdId")({
   loader: ({ params }) => getRfdInitialApplicationState({ data: { rfdId: params.rfdId } }),
@@ -85,42 +93,10 @@ function RfdPage() {
 function RfdPageChrome() {
   const session = useAtomValue(sessionAtom);
   const [signOutResult, signOut] = useAtom(signOutAtom);
-  const setSearchOpen = useAtomSet(searchDialogOpenAtom);
   const signedIn = AsyncResult.isSuccess(session) && session.value !== null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-40 flex items-start justify-between p-2 sm:p-3">
-      <Link
-        to="/"
-        aria-label="RFD Archive home"
-        className="pointer-events-auto inline-flex size-8 items-center justify-center border border-primary bg-primary text-primary-foreground transition-colors outline-none hover:bg-primary/80 focus-visible:ring-1 focus-visible:ring-ring/50"
-      >
-        <TreeStructureIcon size={18} aria-hidden="true" />
-      </Link>
-
-      <div className="pointer-events-auto flex items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => setSearchOpen(true)}
-          aria-label="Search RFDs"
-          aria-keyshortcuts="Meta+K Control+K"
-        >
-          <MagnifyingGlassIcon aria-hidden="true" />
-          <span className="hidden sm:inline">Search</span>
-        </Button>
-        <ThemeToggle />
-        {signedIn ? (
-          <Button disabled={signOutResult.waiting} onClick={() => signOut()}>
-            {signOutResult.waiting ? "Signing out…" : "Sign out"}
-          </Button>
-        ) : (
-          <Button nativeButton={false} render={<Link to="/login" />}>
-            Sign in
-          </Button>
-        )}
-      </div>
-    </div>
+    <RfdHeader signedIn={signedIn} signingOut={signOutResult.waiting} onSignOut={() => signOut()} />
   );
 }
 
@@ -161,14 +137,15 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
         rfdId={rfdId}
         sha={selectedCheckpoint}
         onReturn={() => setSelectedCheckpoint(null)}
+        onSelect={(next) => setSelectedCheckpoint(next)}
       />
     );
   }
 
   if (live) {
     return (
-      <main className="min-h-svh bg-background px-4 pt-28 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
-        <article className="mx-auto max-w-3xl">
+      <main className="min-h-svh bg-background">
+        <article className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-6 sm:pt-14 sm:pb-24">
           <Suspense fallback={<LiveDocumentPlaceholder committed={committed} />}>
             <RfdCollaborativeDocument
               key={rfdId}
@@ -189,15 +166,21 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
               )}
               renderActions={({ checkpoint, canPublish, roomState }) => (
                 <>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <Button
                       type="button"
+                      className={actionButtonClass}
                       disabled={!canPublish}
                       onClick={() => setCheckpointDialogOpen(true)}
                     >
                       {roomState === "Checkpointing…" ? "Checkpointing…" : "Checkpoint"}
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setLive(false)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={actionButtonClass}
+                      onClick={() => setLive(false)}
+                    >
                       Close live view
                     </Button>
                   </div>
@@ -256,15 +239,30 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   }
 
   return (
-    <main className="min-h-svh bg-background px-4 pt-28 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
-      <article className="mx-auto max-w-3xl">
-        <header className="relative border-b pb-7">
-          <p className="font-mono text-xs text-primary">RFD {committed.number}</p>
-          <div className="absolute top-0 right-0 flex items-center gap-2">
+    <main className="min-h-svh bg-background">
+      <article className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-6 sm:pt-14 sm:pb-24">
+        <header>
+          <p className="font-mono text-xs tracking-wider text-primary uppercase">
+            RFD {committed.number}
+          </p>
+          <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
+            {committed.title}
+          </h1>
+          <div className="mt-6 flex flex-wrap items-center gap-2">
             <Button
               type="button"
-              size="sm"
+              className={actionButtonClass}
+              onPointerEnter={() => void loadCollaborativeDocument()}
+              onFocus={() => void loadCollaborativeDocument()}
+              onClick={() => setLive(true)}
+            >
+              <PencilSimpleIcon aria-hidden="true" />
+              Edit
+            </Button>
+            <Button
+              type="button"
               variant="outline"
+              className={actionButtonClass}
               onPointerEnter={prefetchHistory}
               onFocus={prefetchHistory}
               onClick={() => {
@@ -272,29 +270,25 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
                 setHistoryOpen(true);
               }}
             >
+              <ClockCounterClockwiseIcon aria-hidden="true" />
               History
             </Button>
             <VersionActions rfdId={rfdId} ref={{ _tag: "Branch", branch: mainBranch }} canFork />
-            <Button
-              type="button"
-              size="sm"
-              onPointerEnter={() => void loadCollaborativeDocument()}
-              onFocus={() => void loadCollaborativeDocument()}
-              onClick={() => setLive(true)}
-            >
-              Edit
-            </Button>
           </div>
-          <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
-            {committed.title}
-          </h1>
-          <p className="mt-4 font-mono text-xs text-muted-foreground">
-            {committed.author} · {committed.checkpointMessage} · {committed.headSha.slice(0, 8)}
-            <span
-              aria-label="Latest checkpoint"
-              className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
-            />
-          </p>
+          <dl className="mt-8">
+            <PropertyRow label="Author">{committed.author}</PropertyRow>
+            <PropertyRow label="Updated">
+              {new Date(committed.updated).toLocaleString()}
+            </PropertyRow>
+            <PropertyRow label="Checkpoint">
+              <span className="font-mono text-xs">{committed.headSha.slice(0, 8)}</span>
+              <span className="text-muted-foreground"> · {committed.checkpointMessage}</span>
+              <span
+                aria-label="Latest checkpoint"
+                className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
+              />
+            </PropertyRow>
+          </dl>
         </header>
         <RfdReader source={committed.body} />
       </article>
@@ -302,12 +296,13 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
       {historyOpen ? (
         <RfdHistory
           rfdId={rfdId}
-          current={{
+          latest={{
             sha: committed.headSha,
             author: committed.author,
             updated: committed.updated,
             message: committed.checkpointMessage,
           }}
+          viewingSha={committed.headSha}
           onClose={() => setHistoryOpen(false)}
           onSelect={(sha) => {
             setSelectedCheckpoint(sha);
@@ -316,6 +311,23 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
         />
       ) : null}
     </main>
+  );
+}
+
+function PropertyRow({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline gap-4 border-t py-2.5 last:border-b">
+      <dt className="w-20 shrink-0 font-mono text-[11px] tracking-wider text-muted-foreground uppercase sm:w-24">
+        {label}
+      </dt>
+      <dd className="min-w-0 flex-1 text-sm">{children}</dd>
+    </div>
   );
 }
 
@@ -332,14 +344,24 @@ function LiveDocumentPlaceholder({
 }) {
   return (
     <>
-      <header className="border-b pb-8">
-        <p className="font-mono text-xs text-primary">RFD {committed.number}</p>
+      <header>
+        <p className="font-mono text-xs tracking-wider text-primary uppercase">
+          {committed.number > 0 ? `RFD ${committed.number}` : "Loading checkpoint"}
+        </p>
         <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
           {committed.title}
         </h1>
-        <p className="mt-4 font-mono text-xs text-muted-foreground">
-          {committed.author} · {committed.checkpointMessage} · {committed.headSha.slice(0, 8)}
-        </p>
+        <dl className="mt-8">
+          <PropertyRow label="Author">
+            {committed.author === "" ? <Skeleton className="h-4 w-36" /> : committed.author}
+          </PropertyRow>
+          <PropertyRow label="Checkpoint">
+            <span className="font-mono text-xs">{committed.headSha.slice(0, 8)}</span>
+            {committed.checkpointMessage === "" ? null : (
+              <span className="text-muted-foreground"> · {committed.checkpointMessage}</span>
+            )}
+          </PropertyRow>
+        </dl>
       </header>
       <Skeleton className="mt-10 min-h-[24rem]" aria-label="Loading live document" />
     </>
@@ -359,82 +381,124 @@ function HistoryPrefetch({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
 
 function RfdHistory({
   rfdId,
-  current,
+  latest,
+  viewingSha,
   onClose,
   onSelect,
 }: {
   readonly rfdId: typeof RfdId.Type;
-  readonly current: {
+  readonly latest: {
     readonly sha: CommitSha;
     readonly message: string;
     readonly author: string;
     readonly updated: string;
   };
+  readonly viewingSha: CommitSha;
   readonly onClose: () => void;
   readonly onSelect: (sha: CommitSha) => void;
 }) {
   const history = useAtomValue(rfdHistoryAtom(rfdId));
+  const earlier = AsyncResult.isSuccess(history)
+    ? history.value.filter((checkpoint) => checkpoint.sha !== latest.sha)
+    : [];
 
   return (
     <Drawer open direction="right" onOpenChange={(open) => (open ? undefined : onClose())}>
       <DrawerContent aria-label="RFD history">
         <DrawerHeader className="flex-row items-start justify-between gap-4 border-b">
           <div>
-            <p className="font-mono text-xs text-primary">Git history</p>
+            <p className="font-mono text-[11px] tracking-wider text-primary uppercase">
+              Git history
+            </p>
             <DrawerTitle className="mt-1">Checkpoints</DrawerTitle>
           </div>
           <DrawerClose asChild>
-            <Button type="button" variant="outline" size="sm">
+            <Button type="button" variant="outline">
               Close
             </Button>
           </DrawerClose>
         </DrawerHeader>
         <div className="min-h-0 overflow-y-auto px-6">
-          <button
-            type="button"
-            className="block w-full border-b py-4 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent/50"
-            onClick={() => onSelect(current.sha)}
-          >
-            <p className="text-sm font-medium text-foreground">{current.message}</p>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">
-              {current.author} · {new Date(current.updated).toLocaleString()} ·{" "}
-              {current.sha.slice(0, 8)}
-              <span
-                aria-label="Latest checkpoint"
-                className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
+          <ol className="divide-y">
+            <li>
+              <CheckpointRow
+                message={latest.message}
+                author={latest.author}
+                when={latest.updated}
+                sha={latest.sha}
+                isLatest
+                isViewing={viewingSha === latest.sha}
+                onClick={() => onSelect(latest.sha)}
               />
-            </p>
-          </button>
-          {AsyncResult.isFailure(history) ? (
-            <p className="pt-6 text-sm text-destructive">
-              History could not be loaded. Try again shortly.
-            </p>
-          ) : !AsyncResult.isSuccess(history) ? (
-            <p className="py-4 text-sm text-muted-foreground">Loading earlier checkpoints…</p>
-          ) : (
-            <ol className="divide-y">
-              {history.value
-                .filter((checkpoint) => checkpoint.sha !== current.sha)
-                .map((checkpoint) => (
-                  <li key={checkpoint.sha}>
-                    <button
-                      type="button"
-                      className="block w-full py-4 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent/50"
-                      onClick={() => onSelect(checkpoint.sha)}
-                    >
-                      <p className="text-sm font-medium text-foreground">{checkpoint.message}</p>
-                      <p className="mt-1 font-mono text-xs text-muted-foreground">
-                        {checkpoint.author} · {new Date(checkpoint.createdAt).toLocaleString()} ·{" "}
-                        {checkpoint.sha.slice(0, 8)}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-            </ol>
-          )}
+            </li>
+            {AsyncResult.isFailure(history) ? (
+              <li className="pt-6 text-sm text-destructive">
+                History could not be loaded. Try again shortly.
+              </li>
+            ) : !AsyncResult.isSuccess(history) ? (
+              <li className="py-4 text-sm text-muted-foreground">Loading earlier checkpoints…</li>
+            ) : (
+              earlier.map((checkpoint) => (
+                <li key={checkpoint.sha}>
+                  <CheckpointRow
+                    message={checkpoint.message}
+                    author={checkpoint.author}
+                    when={checkpoint.createdAt}
+                    sha={checkpoint.sha}
+                    isViewing={viewingSha === checkpoint.sha}
+                    onClick={() => onSelect(checkpoint.sha)}
+                  />
+                </li>
+              ))
+            )}
+          </ol>
         </div>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+function CheckpointRow({
+  message,
+  author,
+  when,
+  sha,
+  isLatest = false,
+  isViewing = false,
+  onClick,
+}: {
+  readonly message: string;
+  readonly author: string;
+  readonly when: string;
+  readonly sha: CommitSha;
+  readonly isLatest?: boolean;
+  readonly isViewing?: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="block w-full py-4 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent/50"
+      onClick={onClick}
+      aria-current={isViewing ? "true" : undefined}
+    >
+      <p className="text-sm font-medium text-foreground">{message}</p>
+      <p className="mt-1 font-mono text-xs text-muted-foreground">
+        {author} · {new Date(when).toLocaleString()} · {sha.slice(0, 8)}
+        {isLatest ? (
+          <span
+            aria-label="Latest checkpoint"
+            className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
+          />
+        ) : null}
+        {isViewing ? (
+          <span
+            aria-label="Currently viewing"
+            className="ml-2 inline-block size-2 rounded-full bg-status-superseded align-middle"
+          />
+        ) : null}
+      </p>
+    </button>
   );
 }
 
@@ -442,52 +506,109 @@ function HistoricalRfdDocument({
   rfdId,
   sha,
   onReturn,
+  onSelect,
 }: {
   readonly rfdId: typeof RfdId.Type;
   readonly sha: CommitSha;
   readonly onReturn: () => void;
+  readonly onSelect: (sha: CommitSha) => void;
 }) {
   const document = useAtomValue(rfdRefAtom({ rfdId, sha }));
+  const latest = useAtomValue(rfdDocumentAtom(rfdId));
+  const prefetchHistory = useAtomRefresh(rfdHistoryAtom(rfdId));
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const latestDoc = AsyncResult.isSuccess(latest) ? latest.value : null;
 
   return (
-    <main className="min-h-svh bg-background px-4 pt-28 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
-      <article className="mx-auto max-w-3xl">
-        <div className="mb-8 flex items-center justify-between gap-4 border border-primary/40 bg-primary/10 px-4 py-3">
-          <p className="font-mono text-xs text-foreground">Viewing checkpoint {sha.slice(0, 8)}</p>
-          <Button type="button" variant="outline" size="sm" onClick={onReturn}>
-            Return to latest
-          </Button>
-        </div>
+    <main className="min-h-svh bg-background">
+      <article className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-6 sm:pt-14 sm:pb-24">
+        <p className="border-l-2 border-primary bg-primary/5 px-3 py-2 font-mono text-xs text-foreground">
+          Viewing checkpoint {sha.slice(0, 8)} — a read-only snapshot of this RFD.
+        </p>
         {AsyncResult.isFailure(document) ? (
-          <DocumentMessage message="This checkpoint could not be loaded. The latest RFD remains available." />
+          <p
+            className="mt-8 border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+            role="alert"
+          >
+            This checkpoint could not be loaded. The latest RFD remains available.
+          </p>
         ) : !AsyncResult.isSuccess(document) ? (
-          <LiveDocumentPlaceholder
-            committed={{
-              number: 0,
-              title: "Loading checkpoint",
-              author: "",
-              headSha: sha,
-              checkpointMessage: "",
-            }}
-          />
+          <div className="mt-8">
+            <LiveDocumentPlaceholder
+              committed={{
+                number: 0,
+                title: "Loading checkpoint",
+                author: "",
+                headSha: sha,
+                checkpointMessage: "",
+              }}
+            />
+          </div>
         ) : (
-          <>
-            <header className="border-b pb-7">
-              <p className="font-mono text-xs text-primary">RFD {document.value.number}</p>
-              <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
-                {document.value.title}
-              </h1>
-              <p className="mt-4 font-mono text-xs text-muted-foreground">
-                {document.value.author} · {document.value.checkpointMessage} · {sha.slice(0, 8)}
-              </p>
-              <div className="mt-5">
-                <VersionActions rfdId={rfdId} ref={{ _tag: "Checkpoint", sha }} />
-              </div>
-            </header>
-            <RfdReader source={document.value.body} />
-          </>
+          <header className="mt-8">
+            <p className="font-mono text-xs tracking-wider text-primary uppercase">
+              RFD {document.value.number}
+            </p>
+            <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
+              {document.value.title}
+            </h1>
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              <Button type="button" className={actionButtonClass} onClick={onReturn}>
+                Return to latest
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className={actionButtonClass}
+                onPointerEnter={prefetchHistory}
+                onFocus={prefetchHistory}
+                onClick={() => {
+                  prefetchHistory();
+                  setHistoryOpen(true);
+                }}
+              >
+                <ClockCounterClockwiseIcon aria-hidden="true" />
+                History
+              </Button>
+              <VersionActions rfdId={rfdId} ref={{ _tag: "Checkpoint", sha }} />
+            </div>
+            <dl className="mt-8">
+              <PropertyRow label="Author">{document.value.author}</PropertyRow>
+              <PropertyRow label="Updated">
+                {new Date(document.value.updated).toLocaleString()}
+              </PropertyRow>
+              <PropertyRow label="Checkpoint">
+                <span className="font-mono text-xs">{sha.slice(0, 8)}</span>
+                <span className="text-muted-foreground"> · {document.value.checkpointMessage}</span>
+                <span
+                  aria-label="Currently viewing"
+                  className="ml-2 inline-block size-2 rounded-full bg-status-superseded align-middle"
+                />
+              </PropertyRow>
+            </dl>
+          </header>
         )}
+        {AsyncResult.isSuccess(document) ? <RfdReader source={document.value.body} /> : null}
       </article>
+      <HistoryPrefetch rfdId={rfdId} />
+      {historyOpen && latestDoc !== null ? (
+        <RfdHistory
+          rfdId={rfdId}
+          latest={{
+            sha: latestDoc.headSha,
+            author: latestDoc.author,
+            updated: latestDoc.updated,
+            message: latestDoc.checkpointMessage,
+          }}
+          viewingSha={sha}
+          onClose={() => setHistoryOpen(false)}
+          onSelect={(next) => {
+            setHistoryOpen(false);
+            if (next === latestDoc.headSha) onReturn();
+            else if (next !== sha) onSelect(next);
+          }}
+        />
+      ) : null}
     </main>
   );
 }
@@ -503,6 +624,7 @@ function VersionActions({
 }) {
   const [cloneOpen, setCloneOpen] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [cloneResult, mintCloneCredential] = useAtom(cloneCredentialAtom);
   const [forkResult, fork] = useAtom(forkRfdAtom);
   const refLabel = ref._tag === "Branch" ? ref.branch : ref.sha.slice(0, 8);
@@ -515,13 +637,24 @@ function VersionActions({
           `https://${credential.username}:${credential.token}@`,
         );
 
+  const copyCloneCommand = () => {
+    if (cloneCommand === null) return;
+    void navigator.clipboard.writeText(`git clone ${cloneCommand}`).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1000);
+    });
+  };
+
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button type="button" size="sm" variant="outline" />}>
+        <DropdownMenuTrigger
+          render={<Button type="button" variant="outline" className={actionButtonClass} />}
+        >
           Actions
+          <CaretDownIcon aria-hidden="true" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="start">
           <DropdownMenuItem onClick={() => setCloneOpen(true)}>Clone {refLabel}</DropdownMenuItem>
           {canFork ? (
             <>
@@ -532,7 +665,13 @@ function VersionActions({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
+      <Dialog
+        open={cloneOpen}
+        onOpenChange={(open) => {
+          setCloneOpen(open);
+          if (!open) setCopied(false);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Clone {refLabel}</DialogTitle>
@@ -550,18 +689,15 @@ function VersionActions({
             </Button>
           ) : (
             <div className="grid gap-2">
-              <code className="overflow-x-auto border bg-muted/40 p-3 font-mono text-xs text-foreground">
+              <code className="block overflow-x-auto border bg-muted/40 p-3 font-mono text-xs whitespace-nowrap text-foreground">
                 git clone {cloneCommand}
               </code>
               <p className="text-xs text-muted-foreground">
                 Read-only access expires {new Date(credential.expiresAt).toLocaleTimeString()}.
               </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void navigator.clipboard.writeText(`git clone ${cloneCommand}`)}
-              >
-                Copy command
+              <Button type="button" variant="outline" onClick={copyCloneCommand}>
+                {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+                {copied ? "Copied" : "Copy command"}
               </Button>
             </div>
           )}
@@ -650,8 +786,8 @@ function EditableDocumentHeader({
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
-    <header className="border-b pb-8">
-      <p className="font-mono text-xs text-primary">RFD {number}</p>
+    <header>
+      <p className="font-mono text-xs tracking-wider text-primary uppercase">RFD {number}</p>
       <input
         aria-label="RFD title"
         readOnly={!canEdit}
@@ -659,12 +795,16 @@ function EditableDocumentHeader({
         value={title}
         onChange={(event) => setMetadata("title", event.target.value)}
       />
-      <p className="mt-4 font-mono text-xs text-muted-foreground">
-        {author} · {checkpointMessage} · {headSha.slice(0, 8)}
-      </p>
+      <dl className="mt-6">
+        <PropertyRow label="Author">{author}</PropertyRow>
+        <PropertyRow label="Checkpoint">
+          <span className="font-mono text-xs">{headSha.slice(0, 8)}</span>
+          <span className="text-muted-foreground"> · {checkpointMessage}</span>
+        </PropertyRow>
+      </dl>
       <button
         type="button"
-        className="mt-4 font-mono text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        className="mt-4 font-mono text-[11px] tracking-wider text-muted-foreground uppercase underline-offset-4 hover:text-foreground hover:underline"
         onClick={() => setDetailsOpen((open) => !open)}
       >
         Document details
@@ -729,12 +869,12 @@ function MetadataListInput({
   readonly onCommit: (items: string[]) => void;
 }) {
   return (
-    <label className="block text-xs text-muted-foreground">
+    <label className="block font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
       {label}
       <input
         key={value}
         readOnly={!canEdit}
-        className="mt-1 w-full border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus-visible:ring-1 focus-visible:ring-ring/50"
+        className="mt-1.5 w-full border bg-background px-3 py-2 font-sans text-sm tracking-normal text-foreground normal-case outline-none focus:border-primary focus-visible:ring-1 focus-visible:ring-ring/50"
         defaultValue={value}
         onBlur={(event) =>
           onCommit(
@@ -751,7 +891,7 @@ function MetadataListInput({
 
 function DocumentMessage({ message }: { readonly message: string }) {
   return (
-    <main className="grid min-h-svh place-items-center bg-background px-4 text-center">
+    <main className="grid min-h-[calc(100svh-3.5rem)] place-items-center bg-background px-4 text-center">
       <div>
         <p className="text-sm text-muted-foreground">{message}</p>
         <Link to="/" className="mt-4 inline-block font-mono text-xs text-primary uppercase">
