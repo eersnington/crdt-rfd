@@ -38,7 +38,48 @@ export const ApplicationRpcLive = ApplicationRpc.toLayer(
           ),
         ),
       rfd_get: (payload) => repository.get(payload.rfdId),
+      rfd_getRef: (payload) => repository.getRef(payload),
       rfd_history: (payload) => repository.history(payload.rfdId),
+      rfd_fork: (payload, options) =>
+        sessions.getCurrent(headers(options)).pipe(
+          Effect.mapError(
+            () =>
+              new RfdOperationFailed({
+                operation: "authenticate RFD fork",
+                message: "Your session could not be verified. Sign in again and retry.",
+              }),
+          ),
+          Effect.flatMap((session) =>
+            session === null
+              ? Effect.fail(
+                  new RfdOperationFailed({
+                    operation: "authorize RFD fork",
+                    message: "Sign in before creating a fork.",
+                  }),
+                )
+              : repository.fork(payload, session.user),
+          ),
+        ),
+      rfd_cloneCredential: (payload, options) =>
+        sessions.getCurrent(headers(options)).pipe(
+          Effect.mapError(
+            () =>
+              new RfdOperationFailed({
+                operation: "authenticate clone credential",
+                message: "Your session could not be verified. Sign in again and retry.",
+              }),
+          ),
+          Effect.flatMap((session) =>
+            session === null
+              ? Effect.fail(
+                  new RfdOperationFailed({
+                    operation: "authorize clone credential",
+                    message: "Sign in before generating a clone credential.",
+                  }),
+                )
+              : repository.mintCloneCredential(payload, session.user),
+          ),
+        ),
       session_getCurrent: (_payload, options) => sessions.getCurrent(headers(options)),
     };
   }),

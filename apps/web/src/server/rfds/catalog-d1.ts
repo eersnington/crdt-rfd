@@ -30,6 +30,8 @@ const CatalogRow = Schema.Struct({
   head_sha: CommitSha,
   committed_source: Schema.NullOr(Schema.String),
   checkpoint_message: Schema.NullOr(Schema.String),
+  forked_from_rfd_id: Schema.NullOr(RfdId),
+  forked_from_sha: Schema.NullOr(CommitSha),
   owner_user_id: UserId,
   author: Schema.String,
   updated_at: Timestamp,
@@ -45,6 +47,8 @@ interface CatalogRecord {
   readonly headSha: CommitShaValue;
   readonly committedSource: string | null;
   readonly checkpointMessage: string | null;
+  readonly forkedFromRfdId: RfdIdValue | null;
+  readonly forkedFromSha: CommitShaValue | null;
   readonly ownerUserId: UserIdValue;
   readonly author: string;
   readonly updated: string;
@@ -60,6 +64,7 @@ interface InsertCatalogRecord {
   readonly committedSource: string;
   readonly ownerUserId: UserIdValue;
   readonly timestamp: number;
+  readonly forkedFrom?: { readonly rfdId: RfdIdValue; readonly sha: CommitShaValue };
 }
 
 export class CatalogQueryFailed extends Schema.TaggedErrorClass<CatalogQueryFailed>()(
@@ -133,6 +138,7 @@ export class RfdCatalogStore extends Context.Service<RfdCatalogStore, RfdCatalog
 const selectColumns = `
   SELECT r.rfd_id, r.number, r.title, r.status, r.artifact_repo_name,
     r.artifact_remote, r.head_sha, r.committed_source, r.checkpoint_message,
+    r.forked_from_rfd_id, r.forked_from_sha,
     r.owner_user_id, u.name AS author, r.updated_at
   FROM rfd_catalog r
   JOIN user u ON u.id = r.owner_user_id`;
@@ -182,6 +188,8 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
       headSha: row.head_sha,
       committedSource: row.committed_source,
       checkpointMessage: row.checkpoint_message,
+      forkedFromRfdId: row.forked_from_rfd_id,
+      forkedFromSha: row.forked_from_sha,
       ownerUserId: row.owner_user_id,
       author: row.author,
       updated: new Date(row.updated_at).toISOString(),
@@ -231,9 +239,10 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
         database
           .prepare(
             `INSERT INTO rfd_catalog
-           (rfd_id, number, title, status, artifact_repo_name, artifact_remote, head_sha,
-             committed_source, checkpoint_message, owner_user_id, created_at, updated_at)
-            VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, 'Create RFD', ?, ?, ?)`,
+            (rfd_id, number, title, status, artifact_repo_name, artifact_remote, head_sha,
+              committed_source, checkpoint_message, forked_from_rfd_id, forked_from_sha,
+              owner_user_id, created_at, updated_at)
+             VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, 'Create RFD', ?, ?, ?, ?, ?)`,
           )
           .bind(
             record.rfdId,
@@ -243,6 +252,8 @@ export const makeRfdCatalogStore = (database: D1Database): RfdCatalogStoreShape 
             record.artifactRemote,
             record.headSha,
             record.committedSource,
+            record.forkedFrom?.rfdId ?? null,
+            record.forkedFrom?.sha ?? null,
             record.ownerUserId,
             record.timestamp,
             record.timestamp,

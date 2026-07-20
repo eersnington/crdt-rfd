@@ -2,6 +2,7 @@ import {
   CommittedRfdDocument,
   CheckpointConflict,
   CheckpointFailed,
+  CloneCredential,
   RfdId,
   RfdOperationFailed,
   RfdSummary,
@@ -10,12 +11,17 @@ import {
   canTransitionRfdStatus,
   serializeRfdDocument,
   type CommittedRfdDocument as CommittedRfdDocumentValue,
+  type CloneCredential as CloneCredentialValue,
   type CheckpointResult as CheckpointResultValue,
   type CheckpointRfdInput,
   type CommitSha,
   type RfdCheckpoint,
   type CreateRfdInput,
   type CurrentUser,
+  type ForkRfdInput,
+  type ForkRfdResult as ForkRfdResultValue,
+  type GetRfdRefInput as GetRfdRefInputValue,
+  type MintCloneCredentialInput as MintCloneCredentialInputValue,
   type RfdId as RfdIdValue,
   type RoomRole,
   type RfdSummary as RfdSummaryValue,
@@ -33,6 +39,9 @@ export interface RfdRepositoryShape {
     user: CurrentUser,
   ) => Effect.Effect<RfdSummaryValue, RfdOperationFailed>;
   readonly get: (rfdId: RfdIdValue) => Effect.Effect<CommittedRfdDocumentValue, RfdOperationFailed>;
+  readonly getRef: (
+    input: GetRfdRefInputValue,
+  ) => Effect.Effect<CommittedRfdDocumentValue, RfdOperationFailed>;
   readonly checkpoint: (
     input: CheckpointRfdInput,
     user: CurrentUser,
@@ -47,6 +56,14 @@ export interface RfdRepositoryShape {
   readonly history: (
     rfdId: RfdIdValue,
   ) => Effect.Effect<ReadonlyArray<RfdCheckpoint>, RfdOperationFailed>;
+  readonly fork: (
+    input: ForkRfdInput,
+    user: CurrentUser,
+  ) => Effect.Effect<ForkRfdResultValue, RfdOperationFailed>;
+  readonly mintCloneCredential: (
+    input: MintCloneCredentialInputValue,
+    user: CurrentUser,
+  ) => Effect.Effect<CloneCredentialValue, RfdOperationFailed>;
 }
 
 export class RfdRepository extends Context.Service<RfdRepository, RfdRepositoryShape>()(
@@ -294,6 +311,66 @@ const RfdRepositoryLayer = Layer.effect(
       );
     });
 
+    const getRef = Effect.fn("RfdRepository.getRef")(function* (input: GetRfdRefInputValue) {
+      if (input.ref._tag === "Branch") {
+        if (input.ref.branch !== "main") {
+          return yield* failed("read RFD ref", `Branch ${input.ref.branch} was not found.`);
+        }
+        return yield* get(input.rfdId);
+      }
+      const record = yield* catalog
+        .getRecord(input.rfdId)
+        .pipe(
+          Effect.mapError(() => failed("read RFD ref", "The RFD catalog could not be loaded.")),
+        );
+      if (record === null)
+        return yield* failed("read RFD ref", `RFD ${input.rfdId} was not found.`);
+      const token = yield* artifacts
+        .createToken(record.artifactRepoName, "read")
+        .pipe(
+          Effect.mapError(() =>
+            failed("read RFD ref", "A repository token could not be issued for this checkpoint."),
+          ),
+        );
+      const [checkout, history] = yield* Effect.all(
+        [
+          git.readCheckpoint({ remote: record.artifactRemote, token, sha: input.ref.sha }),
+          git.history({ remote: record.artifactRemote, token }),
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(
+        Effect.mapError(() =>
+          failed("read RFD ref", "This checkpoint could not be loaded from Git history."),
+        ),
+      );
+      const checkpointSha = input.ref.sha;
+      const checkpoint = history.find((entry) => entry.sha === checkpointSha);
+      if (checkpoint === undefined) {
+        return yield* failed(
+          "read RFD ref",
+          "This checkpoint is no longer reachable from the RFD history.",
+        );
+      }
+      const parsed = yield* Effect.fromResult(parseRfdDocument(checkout.source)).pipe(
+        Effect.mapError((error) => failed("read RFD ref", error.message)),
+      );
+      return yield* Schema.decodeUnknownEffect(CommittedRfdDocument)({
+        rfdId: input.rfdId,
+        number: record.number,
+        title: parsed.frontmatter.title,
+        status: parsed.frontmatter.status,
+        author: checkpoint.author,
+        updated: checkpoint.createdAt,
+        body: parsed.body,
+        headSha: checkout.headSha,
+        checkpointMessage: checkpoint.message,
+      }).pipe(
+        Effect.mapError(() =>
+          failed("read RFD ref", "The selected checkpoint has invalid RFD metadata."),
+        ),
+      );
+    });
+
     const loadCommittedSource = Effect.fn("RfdRepository.loadCommittedSource")(function* (
       rfdId: RfdIdValue,
     ) {
@@ -466,14 +543,126 @@ const RfdRepositoryLayer = Layer.effect(
         );
     });
 
+    const mintCloneCredential = Effect.fn("RfdRepository.mintCloneCredential")(function* (
+      input: MintCloneCredentialInputValue,
+      _user: CurrentUser,
+    ) {
+      yield* getRef({ rfdId: input.rfdId, ref: input.ref });
+      const record = yield* catalog
+        .getRecord(input.rfdId)
+        .pipe(
+          Effect.mapError(() =>
+            failed("mint clone credential", "The RFD catalog could not be loaded."),
+          ),
+        );
+      if (record === null) {
+        return yield* failed("mint clone credential", `RFD ${input.rfdId} was not found.`);
+      }
+      const token = yield* artifacts
+        .createToken(record.artifactRepoName, "read")
+        .pipe(
+          Effect.mapError(() =>
+            failed("mint clone credential", "A read-only clone credential could not be issued."),
+          ),
+        );
+      const timestamp = yield* Clock.currentTimeMillis;
+      return yield* Schema.decodeUnknownEffect(CloneCredential)({
+        remote: record.artifactRemote,
+        username: "x",
+        token,
+        expiresAt: new Date(timestamp + 300_000).toISOString(),
+        ref: input.ref,
+      }).pipe(
+        Effect.mapError(() =>
+          failed("mint clone credential", "The clone credential could not be prepared."),
+        ),
+      );
+    });
+
+    const fork = Effect.fn("RfdRepository.fork")(function* (
+      input: ForkRfdInput,
+      user: CurrentUser,
+    ) {
+      if (input.source._tag !== "Branch" || input.source.branch !== "main") {
+        return yield* failed(
+          "fork RFD",
+          "Forking an earlier checkpoint will be available once historical refs can be copied into an independent repository.",
+        );
+      }
+      const source = yield* catalog
+        .getRecord(input.sourceRfdId)
+        .pipe(
+          Effect.mapError(() => failed("fork RFD", "The source RFD catalog could not be loaded.")),
+        );
+      if (source === null)
+        return yield* failed("fork RFD", `RFD ${input.sourceRfdId} was not found.`);
+      const committed = yield* loadCommittedSource(input.sourceRfdId);
+      const parsed = yield* Effect.fromResult(parseRfdDocument(committed.source)).pipe(
+        Effect.mapError((error) => failed("fork RFD", error.message)),
+      );
+      const rfdId = yield* Schema.decodeUnknownEffect(RfdId)(crypto.randomUUID()).pipe(
+        Effect.mapError(() => failed("fork RFD", "A new RFD identifier could not be created.")),
+      );
+      const number = yield* catalog
+        .allocateNumber()
+        .pipe(
+          Effect.mapError(() => failed("fork RFD", "A new RFD number could not be allocated.")),
+        );
+      const repositoryName = `rfd-${rfdId}`;
+      const artifact = yield* artifacts
+        .forkRepository(source.artifactRepoName, repositoryName)
+        .pipe(
+          Effect.mapError(() =>
+            failed("fork RFD", "The Artifacts repository could not be forked."),
+          ),
+        );
+      yield* artifacts
+        .waitUntilReady(repositoryName)
+        .pipe(
+          Effect.mapError(() =>
+            failed("fork RFD", "The fork repository was created but did not become ready in time."),
+          ),
+        );
+      const timestamp = yield* Clock.currentTimeMillis;
+      const forkSource = serializeRfdDocument({
+        frontmatter: { ...parsed.frontmatter, number },
+        body: parsed.body,
+      });
+      yield* catalog
+        .insert({
+          rfdId,
+          number,
+          title: parsed.frontmatter.title,
+          artifactRepoName: repositoryName,
+          artifactRemote: artifact.remote,
+          headSha: committed.headSha,
+          committedSource: forkSource,
+          ownerUserId: user.id,
+          timestamp,
+          forkedFrom: { rfdId: input.sourceRfdId, sha: committed.headSha },
+        })
+        .pipe(
+          Effect.mapError(() =>
+            failed(
+              "fork RFD",
+              "The repository fork was created, but its catalog record could not be stored. The repository was retained for recovery.",
+            ),
+          ),
+        );
+      return { rfdId, sourceRfdId: input.sourceRfdId, sourceSha: committed.headSha };
+    });
+
     return RfdRepository.of({
       list,
       create,
       get,
+      getRef,
       loadCommittedSource,
       checkpoint,
       getRoomRole,
       history,
+      fork,
+      mintCloneCredential,
     });
   }),
 );

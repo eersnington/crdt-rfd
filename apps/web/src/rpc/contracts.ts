@@ -2,7 +2,12 @@ import {
   CatalogUnavailable,
   CommittedRfdDocument,
   CreateRfdInput,
+  CloneCredential,
+  ForkRfdInput,
+  ForkRfdResult,
   GetRfdInput,
+  GetRfdRefInput,
+  MintCloneCredentialInput,
   OptionalCurrentSession,
   RfdOperationFailed,
   RfdCheckpoints,
@@ -27,9 +32,18 @@ export const RfdRpc = RpcGroup.make(
     .setPayload(GetRfdInput)
     .setSuccess(CommittedRfdDocument)
     .setError(RfdOperationFailed),
+  Rpc.make("getRef")
+    .setPayload(GetRfdRefInput)
+    .setSuccess(CommittedRfdDocument)
+    .setError(RfdOperationFailed),
   Rpc.make("history")
     .setPayload(GetRfdInput)
     .setSuccess(RfdCheckpoints)
+    .setError(RfdOperationFailed),
+  Rpc.make("fork").setPayload(ForkRfdInput).setSuccess(ForkRfdResult).setError(RfdOperationFailed),
+  Rpc.make("cloneCredential")
+    .setPayload(MintCloneCredentialInput)
+    .setSuccess(CloneCredential)
     .setError(RfdOperationFailed),
 ).prefix("rfd_");
 

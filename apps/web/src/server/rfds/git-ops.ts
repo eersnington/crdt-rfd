@@ -69,6 +69,11 @@ export interface GitRepositoryShape {
     readonly remote: string;
     readonly token: string;
   }) => Effect.Effect<{ readonly source: string; readonly headSha: CommitShaValue }, GitReadFailed>;
+  readonly readCheckpoint: (options: {
+    readonly remote: string;
+    readonly token: string;
+    readonly sha: CommitShaValue;
+  }) => Effect.Effect<{ readonly source: string; readonly headSha: CommitShaValue }, GitReadFailed>;
   readonly checkpoint: (options: {
     readonly remote: string;
     readonly token: string;
@@ -172,6 +177,29 @@ export const GitRepositoryLive = Layer.succeed(
         Effect.mapError(readFailure("decode repository head")),
       );
       return { source: String(source), headSha };
+    }),
+    readCheckpoint: Effect.fn("GitRepository.readCheckpoint")(function* (options) {
+      const fs = new MemoryFS();
+      yield* Effect.tryPromise({
+        try: () =>
+          git.clone({
+            fs,
+            http,
+            dir: directory,
+            url: options.remote,
+            ref: "main",
+            singleBranch: true,
+            depth: historyDepth,
+            onAuth: credentials(options.token),
+            onAuthFailure: credentials(options.token),
+          }),
+        catch: readFailure("clone repository history"),
+      });
+      const blob = yield* Effect.tryPromise({
+        try: () => git.readBlob({ fs, dir: directory, oid: options.sha, filepath: "rfd.md" }),
+        catch: readFailure("read checkpoint rfd.md"),
+      });
+      return { source: new TextDecoder().decode(blob.blob), headSha: options.sha };
     }),
     checkpoint: Effect.fn("GitRepository.checkpoint")(function* (options) {
       const fs = new MemoryFS();

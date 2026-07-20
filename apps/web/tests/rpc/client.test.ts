@@ -28,6 +28,8 @@ vi.mock("cloudflare:workers", () => ({
                 head_sha: "0123456789012345678901234567890123456789",
                 committed_source: null,
                 checkpoint_message: null,
+                forked_from_rfd_id: null,
+                forked_from_sha: null,
                 owner_user_id: "test-user",
                 author: "Test User",
                 updated_at: 1_700_000_000_000,

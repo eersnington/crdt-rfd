@@ -8,7 +8,7 @@ import {
   useAtomValue,
 } from "@effect/atom-react";
 import { MagnifyingGlassIcon, TreeStructureIcon } from "@phosphor-icons/react";
-import { RfdId } from "@crdt-rfd/domain";
+import { BranchName, RfdId, type CommitSha, type RfdRef } from "@crdt-rfd/domain";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Result, Schema } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
@@ -33,11 +33,21 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { RfdReader } from "@/components/editor/rfd-reader";
 import { useMountEffect } from "@/lib/use-mount-effect";
 import {
   rfdDocumentAtom,
   rfdHistoryAtom,
+  rfdRefAtom,
+  cloneCredentialAtom,
+  forkRfdAtom,
   searchDialogOpenAtom,
   sessionAtom,
   signOutAtom,
@@ -50,6 +60,7 @@ const loadCollaborativeDocument = () =>
   }));
 
 const RfdCollaborativeDocument = lazy(loadCollaborativeDocument);
+const mainBranch = Schema.decodeUnknownSync(BranchName)("main");
 
 export const Route = createFileRoute("/rfd/$rfdId")({
   loader: ({ params }) => getRfdInitialApplicationState({ data: { rfdId: params.rfdId } }),
@@ -131,6 +142,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   const session = useAtomValue(sessionAtom);
   const [live, setLive] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState<CommitSha | null>(null);
   const [checkpointDialogOpen, setCheckpointDialogOpen] = useState(false);
   const [checkpointMessage, setCheckpointMessage] = useState("");
 
@@ -142,6 +154,16 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   }
   const user = AsyncResult.isSuccess(session) ? session.value?.user : undefined;
   const committed = document.value;
+
+  if (selectedCheckpoint !== null) {
+    return (
+      <HistoricalRfdDocument
+        rfdId={rfdId}
+        sha={selectedCheckpoint}
+        onReturn={() => setSelectedCheckpoint(null)}
+      />
+    );
+  }
 
   if (live) {
     return (
@@ -252,6 +274,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
             >
               History
             </Button>
+            <VersionActions rfdId={rfdId} ref={{ _tag: "Branch", branch: mainBranch }} canFork />
             <Button
               type="button"
               size="sm"
@@ -286,6 +309,10 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
             message: committed.checkpointMessage,
           }}
           onClose={() => setHistoryOpen(false)}
+          onSelect={(sha) => {
+            setSelectedCheckpoint(sha);
+            setHistoryOpen(false);
+          }}
         />
       ) : null}
     </main>
@@ -334,15 +361,17 @@ function RfdHistory({
   rfdId,
   current,
   onClose,
+  onSelect,
 }: {
   readonly rfdId: typeof RfdId.Type;
   readonly current: {
-    readonly sha: string;
+    readonly sha: CommitSha;
     readonly message: string;
     readonly author: string;
     readonly updated: string;
   };
   readonly onClose: () => void;
+  readonly onSelect: (sha: CommitSha) => void;
 }) {
   const history = useAtomValue(rfdHistoryAtom(rfdId));
 
@@ -361,7 +390,11 @@ function RfdHistory({
           </DrawerClose>
         </DrawerHeader>
         <div className="min-h-0 overflow-y-auto px-6">
-          <div className="border-b py-4">
+          <button
+            type="button"
+            className="block w-full border-b py-4 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent/50"
+            onClick={() => onSelect(current.sha)}
+          >
             <p className="text-sm font-medium text-foreground">{current.message}</p>
             <p className="mt-1 font-mono text-xs text-muted-foreground">
               {current.author} · {new Date(current.updated).toLocaleString()} ·{" "}
@@ -371,7 +404,7 @@ function RfdHistory({
                 className="ml-2 inline-block size-2 rounded-full bg-primary align-middle"
               />
             </p>
-          </div>
+          </button>
           {AsyncResult.isFailure(history) ? (
             <p className="pt-6 text-sm text-destructive">
               History could not be loaded. Try again shortly.
@@ -383,12 +416,18 @@ function RfdHistory({
               {history.value
                 .filter((checkpoint) => checkpoint.sha !== current.sha)
                 .map((checkpoint) => (
-                  <li key={checkpoint.sha} className="py-4">
-                    <p className="text-sm font-medium text-foreground">{checkpoint.message}</p>
-                    <p className="mt-1 font-mono text-xs text-muted-foreground">
-                      {checkpoint.author} · {new Date(checkpoint.createdAt).toLocaleString()} ·{" "}
-                      {checkpoint.sha.slice(0, 8)}
-                    </p>
+                  <li key={checkpoint.sha}>
+                    <button
+                      type="button"
+                      className="block w-full py-4 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent/50"
+                      onClick={() => onSelect(checkpoint.sha)}
+                    >
+                      <p className="text-sm font-medium text-foreground">{checkpoint.message}</p>
+                      <p className="mt-1 font-mono text-xs text-muted-foreground">
+                        {checkpoint.author} · {new Date(checkpoint.createdAt).toLocaleString()} ·{" "}
+                        {checkpoint.sha.slice(0, 8)}
+                      </p>
+                    </button>
                   </li>
                 ))}
             </ol>
@@ -396,6 +435,191 @@ function RfdHistory({
         </div>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+function HistoricalRfdDocument({
+  rfdId,
+  sha,
+  onReturn,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly sha: CommitSha;
+  readonly onReturn: () => void;
+}) {
+  const document = useAtomValue(rfdRefAtom({ rfdId, sha }));
+
+  return (
+    <main className="min-h-svh bg-background px-4 pt-28 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
+      <article className="mx-auto max-w-3xl">
+        <div className="mb-8 flex items-center justify-between gap-4 border border-primary/40 bg-primary/10 px-4 py-3">
+          <p className="font-mono text-xs text-foreground">Viewing checkpoint {sha.slice(0, 8)}</p>
+          <Button type="button" variant="outline" size="sm" onClick={onReturn}>
+            Return to latest
+          </Button>
+        </div>
+        {AsyncResult.isFailure(document) ? (
+          <DocumentMessage message="This checkpoint could not be loaded. The latest RFD remains available." />
+        ) : !AsyncResult.isSuccess(document) ? (
+          <LiveDocumentPlaceholder
+            committed={{
+              number: 0,
+              title: "Loading checkpoint",
+              author: "",
+              headSha: sha,
+              checkpointMessage: "",
+            }}
+          />
+        ) : (
+          <>
+            <header className="border-b pb-7">
+              <p className="font-mono text-xs text-primary">RFD {document.value.number}</p>
+              <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
+                {document.value.title}
+              </h1>
+              <p className="mt-4 font-mono text-xs text-muted-foreground">
+                {document.value.author} · {document.value.checkpointMessage} · {sha.slice(0, 8)}
+              </p>
+              <div className="mt-5">
+                <VersionActions rfdId={rfdId} ref={{ _tag: "Checkpoint", sha }} />
+              </div>
+            </header>
+            <RfdReader source={document.value.body} />
+          </>
+        )}
+      </article>
+    </main>
+  );
+}
+
+function VersionActions({
+  rfdId,
+  ref,
+  canFork = false,
+}: {
+  readonly rfdId: typeof RfdId.Type;
+  readonly ref: RfdRef;
+  readonly canFork?: boolean;
+}) {
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [forkOpen, setForkOpen] = useState(false);
+  const [cloneResult, mintCloneCredential] = useAtom(cloneCredentialAtom);
+  const [forkResult, fork] = useAtom(forkRfdAtom);
+  const refLabel = ref._tag === "Branch" ? ref.branch : ref.sha.slice(0, 8);
+  const credential = AsyncResult.isSuccess(cloneResult) ? cloneResult.value : null;
+  const cloneCommand =
+    credential === null
+      ? null
+      : credential.remote.replace(
+          /^https:\/\//,
+          `https://${credential.username}:${credential.token}@`,
+        );
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button type="button" size="sm" variant="outline" />}>
+          Actions
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setCloneOpen(true)}>Clone {refLabel}</DropdownMenuItem>
+          {canFork ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setForkOpen(true)}>Fork RFD</DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clone {refLabel}</DialogTitle>
+            <DialogDescription>
+              Generate a read-only Git credential for this version. It expires after five minutes.
+            </DialogDescription>
+          </DialogHeader>
+          {credential === null ? (
+            <Button
+              type="button"
+              disabled={cloneResult.waiting}
+              onClick={() => mintCloneCredential({ payload: { rfdId, ref } })}
+            >
+              {cloneResult.waiting ? "Generating…" : "Generate credential"}
+            </Button>
+          ) : (
+            <div className="grid gap-2">
+              <code className="overflow-x-auto border bg-muted/40 p-3 font-mono text-xs text-foreground">
+                git clone {cloneCommand}
+              </code>
+              <p className="text-xs text-muted-foreground">
+                Read-only access expires {new Date(credential.expiresAt).toLocaleTimeString()}.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void navigator.clipboard.writeText(`git clone ${cloneCommand}`)}
+              >
+                Copy command
+              </Button>
+            </div>
+          )}
+          {AsyncResult.isFailure(cloneResult) ? (
+            <p className="text-sm text-destructive" role="alert">
+              {"message" in cloneResult.cause
+                ? String(cloneResult.cause.message)
+                : "The clone credential could not be generated."}
+            </p>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={forkOpen} onOpenChange={setForkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Fork this RFD</DialogTitle>
+            <DialogDescription>
+              Creates a new RFD and independent Artifacts repository from {refLabel}. The source
+              stays unchanged.
+            </DialogDescription>
+          </DialogHeader>
+          {AsyncResult.isSuccess(forkResult) ? (
+            <Button
+              nativeButton={false}
+              render={<Link to="/rfd/$rfdId" params={{ rfdId: forkResult.value.rfdId }} />}
+            >
+              Open fork
+            </Button>
+          ) : (
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setForkOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={forkResult.waiting}
+                onClick={() =>
+                  fork({
+                    payload: { sourceRfdId: rfdId, source: ref },
+                    reactivityKeys: ["catalog"],
+                  })
+                }
+              >
+                {forkResult.waiting ? "Creating fork…" : "Create fork"}
+              </Button>
+            </DialogFooter>
+          )}
+          {AsyncResult.isFailure(forkResult) ? (
+            <p className="text-sm text-destructive" role="alert">
+              {"message" in forkResult.cause
+                ? String(forkResult.cause.message)
+                : "The fork could not be created."}
+            </p>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

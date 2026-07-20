@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { RfdStatus } from "./contracts.ts";
-import { CommitSha, RfdId, RfdNumber, UserId } from "./values.ts";
+import { BranchName, CommitSha, RfdId, RfdNumber, UserId } from "./values.ts";
 
 const IsoTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/),
@@ -42,6 +42,37 @@ export type CommittedRfdDocument = typeof CommittedRfdDocument.Type;
 
 export const GetRfdInput = Schema.Struct({ rfdId: RfdId });
 export type GetRfdInput = typeof GetRfdInput.Type;
+
+export const RfdRef = Schema.Union([
+  Schema.Struct({ _tag: Schema.tag("Branch"), branch: BranchName }),
+  Schema.Struct({ _tag: Schema.tag("Checkpoint"), sha: CommitSha }),
+]);
+export type RfdRef = typeof RfdRef.Type;
+
+export const GetRfdRefInput = Schema.Struct({ rfdId: RfdId, ref: RfdRef });
+export type GetRfdRefInput = typeof GetRfdRefInput.Type;
+
+export const ForkRfdInput = Schema.Struct({ sourceRfdId: RfdId, source: RfdRef });
+export type ForkRfdInput = typeof ForkRfdInput.Type;
+
+export const ForkRfdResult = Schema.Struct({
+  rfdId: RfdId,
+  sourceRfdId: RfdId,
+  sourceSha: CommitSha,
+});
+export type ForkRfdResult = typeof ForkRfdResult.Type;
+
+export const MintCloneCredentialInput = Schema.Struct({ rfdId: RfdId, ref: RfdRef });
+export type MintCloneCredentialInput = typeof MintCloneCredentialInput.Type;
+
+export const CloneCredential = Schema.Struct({
+  remote: Schema.String,
+  username: Schema.String,
+  token: Schema.String,
+  expiresAt: IsoTimestamp,
+  ref: RfdRef,
+});
+export type CloneCredential = typeof CloneCredential.Type;
 
 export const RfdCheckpoint = Schema.Struct({
   sha: CommitSha,

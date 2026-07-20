@@ -18,6 +18,8 @@ vi.mock("cloudflare:workers", () => ({
                 head_sha: "0123456789012345678901234567890123456789",
                 committed_source: null,
                 checkpoint_message: null,
+                forked_from_rfd_id: null,
+                forked_from_sha: null,
                 owner_user_id: "test-user",
                 author: "Test User",
                 updated_at: 1_700_000_000_000,
@@ -30,6 +32,7 @@ vi.mock("cloudflare:workers", () => ({
 }));
 
 import { RfdCatalog, RfdCatalogLive } from "../../../src/server/application/catalog";
+import { makeRfdCatalogStore } from "../../../src/server/rfds/catalog-d1";
 import { RfdRepositoryLive } from "../../../src/server/rfds/repository";
 
 describe("RfdCatalog", () => {
@@ -43,5 +46,39 @@ describe("RfdCatalog", () => {
     expect(catalog).toHaveLength(1);
     expect(catalog.every((rfd) => rfd.number > 0)).toBe(true);
     expect(catalog[0]?.title).toBe("D1 catalog");
+  });
+
+  it("stores fork lineage in the catalog insert", async () => {
+    const statements: Array<string> = [];
+    const database = {
+      prepare: (statement: string) => {
+        statements.push(statement);
+        return { bind: () => ({}) };
+      },
+      batch: () => Promise.resolve([]),
+    };
+    const catalog = makeRfdCatalogStore(database as never);
+
+    await Effect.runPromise(
+      catalog.insert({
+        rfdId: "fork-rfd" as never,
+        number: 2 as never,
+        title: "Forked RFD",
+        artifactRepoName: "rfd-fork-rfd",
+        artifactRemote: "https://example.invalid/rfd-fork-rfd.git",
+        headSha: "0123456789012345678901234567890123456789" as never,
+        committedSource: "---\nnumber: 2\n---\n",
+        ownerUserId: "test-user" as never,
+        timestamp: 1_700_000_000_000,
+        forkedFrom: {
+          rfdId: "source-rfd" as never,
+          sha: "0123456789012345678901234567890123456789" as never,
+        },
+      }),
+    );
+
+    expect(statements[0]?.replace(/\s+/g, " ")).toContain(
+      "committed_source, checkpoint_message, forked_from_rfd_id, forked_from_sha, owner_user_id",
+    );
   });
 });

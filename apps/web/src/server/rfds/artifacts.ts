@@ -7,6 +7,7 @@ type ArtifactsBinding = WebsiteEnv["ARTIFACTS"];
 type CreatedRepository = Awaited<ReturnType<ArtifactsBinding["create"]>>;
 type RepositoryHandle = Awaited<ReturnType<ArtifactsBinding["get"]>>;
 type CreatedToken = Awaited<ReturnType<RepositoryHandle["createToken"]>>;
+type ForkedRepository = Awaited<ReturnType<RepositoryHandle["fork"]>>;
 
 export class ArtifactRepositoryCreationFailed extends Schema.TaggedErrorClass<ArtifactRepositoryCreationFailed>()(
   "ArtifactRepositoryCreationFailed",
@@ -43,6 +44,10 @@ export interface ArtifactStoreShape {
     repositoryName: string,
     permission: "read" | "write",
   ) => Effect.Effect<string, ArtifactTokenCreationFailed>;
+  readonly forkRepository: (
+    sourceRepositoryName: string,
+    targetRepositoryName: string,
+  ) => Effect.Effect<{ readonly remote: string }, ArtifactRepositoryUnavailable>;
 }
 
 export class ArtifactStore extends Context.Service<ArtifactStore, ArtifactStoreShape>()(
@@ -101,7 +106,21 @@ export const makeArtifactStore = (artifacts: ArtifactsBinding): ArtifactStoreSha
     return tokenSecret(token.plaintext);
   });
 
-  return ArtifactStore.of({ createRepository, waitUntilReady, createToken });
+  const forkRepository = Effect.fn("ArtifactStore.forkRepository")(function* (
+    sourceRepositoryName: string,
+    targetRepositoryName: string,
+  ) {
+    const source = yield* getRepository(sourceRepositoryName);
+    const forked = yield* Effect.tryPromise({
+      try: (): Promise<ForkedRepository> =>
+        source.fork(targetRepositoryName, { defaultBranchOnly: true }),
+      catch: (cause) =>
+        new ArtifactRepositoryUnavailable({ repositoryName: sourceRepositoryName, cause }),
+    });
+    return { remote: forked.remote };
+  });
+
+  return ArtifactStore.of({ createRepository, waitUntilReady, createToken, forkRepository });
 };
 
 export const ArtifactStoreLive = Layer.sync(ArtifactStore, () =>
