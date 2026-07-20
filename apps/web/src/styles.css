@@ -172,6 +172,9 @@
   .document-prose blockquote {
     @apply my-5 border-l-2 border-primary pl-4 text-muted-foreground;
   }
+  .document-prose hr {
+    @apply my-10 border-0 border-t border-primary/40;
+  }
   .document-prose pre {
     @apply my-5 overflow-x-auto border bg-muted p-4 font-mono text-sm;
   }

@@ -17,12 +17,22 @@ import { RfdSearchProvider } from "@/components/rfd-search";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Drawer,
   DrawerClose,
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RfdReader } from "@/components/editor/rfd-reader";
 import { useMountEffect } from "@/lib/use-mount-effect";
 import {
@@ -34,11 +44,12 @@ import {
 } from "@/rpc/client";
 import { getRfdInitialApplicationState } from "@/server/application/initial-state";
 
-const RfdCollaborativeDocument = lazy(() =>
+const loadCollaborativeDocument = () =>
   import("@/components/editor/rfd-editor").then((module) => ({
     default: module.RfdCollaborativeDocument,
-  })),
-);
+  }));
+
+const RfdCollaborativeDocument = lazy(loadCollaborativeDocument);
 
 export const Route = createFileRoute("/rfd/$rfdId")({
   loader: ({ params }) => getRfdInitialApplicationState({ data: { rfdId: params.rfdId } }),
@@ -120,6 +131,8 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
   const session = useAtomValue(sessionAtom);
   const [live, setLive] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [checkpointDialogOpen, setCheckpointDialogOpen] = useState(false);
+  const [checkpointMessage, setCheckpointMessage] = useState("");
 
   if (AsyncResult.isFailure(document)) {
     return <DocumentMessage message="The committed RFD could not be loaded. Try again shortly." />;
@@ -134,9 +147,7 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
     return (
       <main className="min-h-svh bg-background px-4 pt-28 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
         <article className="mx-auto max-w-3xl">
-          <Suspense
-            fallback={<p className="py-12 text-sm text-muted-foreground">Opening editor…</p>}
-          >
+          <Suspense fallback={<LiveDocumentPlaceholder committed={committed} />}>
             <RfdCollaborativeDocument
               key={rfdId}
               rfdId={rfdId}
@@ -147,28 +158,71 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
                   number={committed.number}
                   author={committed.author}
                   headSha={committed.headSha}
-                  title={title}
+                  title={title || committed.title}
                   metadata={metadata}
                   canEdit={canEdit}
                   setMetadata={setMetadata}
                 />
               )}
               renderActions={({ checkpoint, canPublish }) => (
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    disabled={!canPublish}
-                    onClick={() => {
-                      const message = window.prompt("Checkpoint message (optional)");
-                      checkpoint(message === null ? undefined : message);
-                    }}
-                  >
-                    Checkpoint
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setLive(false)}>
-                    Close live view
-                  </Button>
-                </div>
+                <>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      disabled={!canPublish}
+                      onClick={() => setCheckpointDialogOpen(true)}
+                    >
+                      Checkpoint
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setLive(false)}>
+                      Close live view
+                    </Button>
+                  </div>
+                  <Dialog open={checkpointDialogOpen} onOpenChange={setCheckpointDialogOpen}>
+                    <DialogContent showCloseButton={false}>
+                      <DialogHeader>
+                        <DialogTitle>Create checkpoint</DialogTitle>
+                        <DialogDescription>
+                          Save the current document to Git. A message makes this checkpoint easier
+                          to find in history.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <Input
+                        autoFocus
+                        aria-label="Checkpoint message"
+                        maxLength={200}
+                        placeholder="Describe this change (optional)"
+                        value={checkpointMessage}
+                        onChange={(event) => setCheckpointMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          checkpoint(checkpointMessage.trim() || undefined);
+                          setCheckpointMessage("");
+                          setCheckpointDialogOpen(false);
+                        }}
+                      />
+                      <DialogFooter>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setCheckpointDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            checkpoint(checkpointMessage.trim() || undefined);
+                            setCheckpointMessage("");
+                            setCheckpointDialogOpen(false);
+                          }}
+                        >
+                          Save checkpoint
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
             />
           </Suspense>
@@ -196,7 +250,13 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
             >
               History
             </Button>
-            <Button type="button" size="sm" onClick={() => setLive(true)}>
+            <Button
+              type="button"
+              size="sm"
+              onPointerEnter={() => void loadCollaborativeDocument()}
+              onFocus={() => void loadCollaborativeDocument()}
+              onClick={() => setLive(true)}
+            >
               Edit
             </Button>
           </div>
@@ -226,6 +286,32 @@ function RfdDocument({ rfdId }: { readonly rfdId: typeof RfdId.Type }) {
         />
       ) : null}
     </main>
+  );
+}
+
+function LiveDocumentPlaceholder({
+  committed,
+}: {
+  readonly committed: {
+    readonly number: number;
+    readonly title: string;
+    readonly author: string;
+    readonly headSha: string;
+  };
+}) {
+  return (
+    <>
+      <header className="border-b pb-8">
+        <p className="font-mono text-xs text-primary">RFD {committed.number}</p>
+        <h1 className="mt-3 text-balance font-heading text-4xl leading-tight sm:text-5xl">
+          {committed.title}
+        </h1>
+        <p className="mt-4 font-mono text-xs text-muted-foreground">
+          {committed.author} · Checkpoint {committed.headSha.slice(0, 8)}
+        </p>
+      </header>
+      <Skeleton className="mt-10 min-h-[24rem]" aria-label="Loading live document" />
+    </>
   );
 }
 

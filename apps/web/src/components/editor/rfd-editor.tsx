@@ -9,6 +9,12 @@ import type { CurrentUser, RfdId } from "@crdt-rfd/domain";
 
 import { useMountEffect } from "@/lib/use-mount-effect";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { RfdRoomProvider } from "@/editor/room-provider";
 import { useYMetadata, type RfdMetadata } from "@/editor/use-y-metadata";
 
@@ -44,7 +50,6 @@ export function RfdCollaborativeDocument({
   }) => ReactNode;
 }) {
   const [provider] = useState(() => new RfdRoomProvider(rfdId, onCheckpoint));
-  const [slashOpen, setSlashOpen] = useState(false);
   const state = useSyncExternalStore(
     provider.subscribe,
     provider.getSnapshot,
@@ -75,18 +80,6 @@ export function RfdCollaborativeDocument({
         attributes: {
           class: "document-prose min-h-[24rem] outline-none",
           "aria-label": "RFD document body",
-        },
-        handleKeyDown: (view, event) => {
-          const selection = view.state.selection.$from;
-          if (
-            event.key !== "/" ||
-            selection.parentOffset !== 0 ||
-            selection.parent.textContent !== ""
-          ) {
-            return false;
-          }
-          setSlashOpen(true);
-          return true;
         },
       },
     },
@@ -140,40 +133,6 @@ export function RfdCollaborativeDocument({
           {state.error}
         </p>
       )}
-      {canEdit && slashOpen ? (
-        <div
-          className="mb-6 flex flex-wrap gap-1 border bg-popover p-1 shadow-sm"
-          role="menu"
-          aria-label="Insert document block"
-        >
-          {(
-            [
-              ["Heading", () => editor?.chain().focus().toggleHeading({ level: 2 }).run()],
-              ["List", () => editor?.chain().focus().toggleBulletList().run()],
-              ["Quote", () => editor?.chain().focus().toggleBlockquote().run()],
-              ["Code", () => editor?.chain().focus().toggleCodeBlock().run()],
-              ["Divider", () => editor?.chain().focus().setHorizontalRule().run()],
-            ] as const
-          ).map(([label, command]) => (
-            <Button
-              key={label}
-              type="button"
-              variant="ghost"
-              size="sm"
-              role="menuitem"
-              onClick={() => {
-                command();
-                setSlashOpen(false);
-              }}
-            >
-              {label}
-            </Button>
-          ))}
-          <Button type="button" variant="ghost" size="sm" onClick={() => setSlashOpen(false)}>
-            Close
-          </Button>
-        </div>
-      ) : null}
       <EditorContent editor={editor} />
       {editor === null || !canEdit ? null : (
         <BubbleMenu editor={editor} className="editor-bubble-menu">
@@ -212,13 +171,41 @@ export function RfdCollaborativeDocument({
         </BubbleMenu>
       )}
       <div className="mt-8 flex items-center justify-between gap-4">
-        <span className="font-mono text-xs text-muted-foreground">
-          {roomState}
-          {canEdit ? null : " · Read only"}
-          {presenceCount > 1
-            ? ` · ${presenceCount - 1} collaborator${presenceCount === 2 ? "" : "s"}`
-            : ""}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs text-muted-foreground">
+            {roomState}
+            {canEdit ? null : " · Read only"}
+            {presenceCount > 1
+              ? ` · ${presenceCount - 1} collaborator${presenceCount === 2 ? "" : "s"}`
+              : ""}
+          </span>
+          {editor === null || !canEdit ? null : (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" size="sm" variant="outline" />}>
+                Insert
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                >
+                  Heading
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().toggleBulletList().run()}>
+                  List
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+                  Quote
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+                  Code block
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+                  Divider
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
         {renderActions({ checkpoint, canPublish, roomState })}
       </div>
     </>
